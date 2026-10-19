@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#f7f7f5">
+<meta name="description" content="미국·한국 주요 ETF 타이밍 분석 — 52주 최저가 대비 10% 이내, RSI 50 이하 매수 신호와 익절·손절 타이밍">
+<title>ETF 타이밍 분석</title>
+<link rel="stylesheet" href="styles.css?v=1">
+</head>
+<body>
+
+<!-- ================= 헤더 ================= -->
+<header class="top">
+  <div class="wrap">
+    <div class="logo">ETF</div>
+    <h1>ETF 타이밍 분석</h1>
+    <button id="mkt-btn" class="chip" title="시장 전환">🇺🇸 미국</button>
+    <button id="theme-btn" class="chip" title="다크모드">🌙</button>
+  </div>
+</header>
+
+<!-- ================= 히어로 ================= -->
+<section class="hero">
+  <div class="wrap">
+    <div class="kicker">매수 · 익절 타이밍</div>
+    <h2 id="hero-title">시세 불러오는 중…</h2>
+    <p id="hero-desc">52주 최저가 대비 10% 이내 + RSI 50 이하인 종목을 찾습니다.</p>
+  </div>
+</section>
+
+<!-- ================= 갱신 상태 ================= -->
+<div class="statusbar" id="statusbar">
+  <span id="data-status">데이터 로딩 중…</span>
+</div>
+
+<!-- ================= 국면 배너 ================= -->
+<div class="card regime-card" id="regime-card">
+  <div class="card-h">현재 시장 국면</div>
+  <div class="card-b" id="regime-body">—</div>
+</div>
+
+<!-- ================= 탭 ================= -->
+<nav class="tabs">
+  <button class="on" data-tab="buy">매수 타이밍</button>
+  <button data-tab="sell">익절 타이밍</button>
+  <button data-tab="all">전체 목록</button>
+  <button data-tab="verify">검증</button>
+  <button data-tab="guide">설명서</button>
+</nav>
+
+<!-- ---------- 매수 ---------- -->
+<section class="tabpane on" id="tab-buy">
+  <div class="card">
+    <div class="card-h">1순위 · 국면 필터 통과</div>
+    <div class="card-b" id="regime-list"></div>
+    <div class="note">원조건(저점+10% 이내 · RSI 50 이하) + 시장이 약세 국면일 때만 표시</div>
+  </div>
+
+  <div class="card">
+    <div class="card-h">2순위 · 원조건만 충족</div>
+    <div class="card-b" id="raw-list"></div>
+    <div class="note">52주 최저가 대비 10% 이내 + RSI 50 이하. 시장 국면과 무관하게 표시</div>
+  </div>
+
+  <div class="card">
+    <div class="card-h">조건 만족 종목 없음</div>
+    <div class="card-b" id="empty-note" style="display:none">
+      지금은 두 조건을 동시에 만족하는 종목이 없습니다. 국면이 바뀌거나
+      종목이 52주 저점에서 더 내려갈 때까지 기다리는 구간입니다.
+    </div>
+  </div>
+</section>
+
+<!-- ---------- 익절 ---------- -->
+<section class="tabpane" id="tab-sell">
+  <div class="card">
+    <div class="card-h">익절 기준선 선택</div>
+    <div class="card-b">
+      <div class="seg" id="exit-seg">
+        <button class="on" data-exit="60">RSI &gt; 60 익절</button>
+        <button data-exit="70">RSI &gt; 70 익절</button>
+      </div>
+      <div class="note" id="exit-note"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-h">손절 기준</div>
+    <div class="card-b">
+      <div class="seg" id="stop-seg">
+        <button class="on" data-stop="15">-15%</button>
+        <button data-stop="20">-20%</button>
+        <button data-stop="none">손절 없음</button>
+      </div>
+      <div class="note">진입가 대비. 백테스트에서 -12~20% 구간은 결과 차이가 작아 -15%를 기본으로 둡니다.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-h">보유 중 · 익절까지 거리</div>
+    <div class="card-b" id="sell-list"></div>
+    <div class="note">
+      매수 신호가 발생한 종목을 "보유 중"으로 간주해 현재 상태를 보여줍니다.
+      실제 보유 여부는 사이트가 알 수 없습니다.
+    </div>
+  </div>
+</section>
+
+<!-- ---------- 전체 목록 ---------- -->
+<section class="tabpane" id="tab-all">
+  <div class="card">
+    <div class="card-h">필터 · 정렬</div>
+    <div class="card-b">
+      <div class="row">
+        <select id="f-cat">
+          <option value="">전체 카테고리</option>
+        </select>
+        <select id="f-sort">
+          <option value="signal">신호 우선</option>
+          <option value="low">52주 저점 근접순</option>
+          <option value="rsi">RSI 낮은순</option>
+          <option value="low52">저점대비 높은순</option>
+          <option value="ret12">1년 수익률</option>
+          <option value="ma200">200일선 이격</option>
+        </select>
+      </div>
+      <div class="row">
+        <select id="f-state">
+          <option value="">전체 상태</option>
+          <option value="regime">국면 필터 통과</option>
+          <option value="raw">원조건 충족</option>
+          <option value="none">미충족</option>
+        </select>
+        <span class="count" id="all-count"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-h">전 종목</div>
+    <div class="card-b table-wrap"><table id="all-table"></table></div>
+  </div>
+</section>
+
+<!-- ---------- 검증 ---------- -->
+<section class="tabpane" id="tab-verify">
+  <div class="card">
+    <div class="card-h">백테스트 요약</div>
+    <div class="card-b" id="bt-summary">불러오는 중…</div>
+  </div>
+
+  <div class="card">
+    <div class="card-h">규칙별 성과</div>
+    <div class="card-b table-wrap"><table id="bt-table"></table></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h">청산 사유별 성과</div>
+    <div class="card-b table-wrap"><table id="bt-reasons"></table></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h">측정 방법과 한계</div>
+    <div class="card-b" id="bt-notes"></div>
+  </div>
+</section>
+
+<!-- ---------- 설명서 ---------- -->
+<section class="tabpane" id="tab-guide">
+  <div class="card">
+    <div class="card-h">1 · 매수 조건</div>
+    <div class="card-b" id="g-buy"></div>
+  </div>
+  <div class="card">
+    <div class="card-h">2 · 매도 (익절·손절) 조건</div>
+    <div class="card-b" id="g-sell"></div>
+  </div>
+  <div class="card">
+    <div class="card-h">3 · 시장 국면</div>
+    <div class="card-b" id="g-regime"></div>
+  </div>
+  <div class="card">
+    <div class="card-h">4 · 지표 계산 방법</div>
+    <div class="card-b" id="g-calc"></div>
+  </div>
+  <div class="card">
+    <div class="card-h">5 · 한계</div>
+    <div class="card-b" id="g-limits"></div>
+  </div>
+  <div class="card alert-card">
+    <div class="card-h">면책</div>
+    <div class="card-b">
+      개인이 과거 데이터로 만든 참고용 도구입니다. <b>투자 권유가 아니며 미래 수익을 보장하지 않습니다.</b>
+      투자 판단과 결과는 본인 책임입니다.
+    </div>
+  </div>
+</section>
+
+<!-- ================= 하단 내비 ================= -->
+<nav class="nav">
+  <button class="on" data-tab="buy"><span>매수</span></button>
+  <button data-tab="sell"><span>익절</span></button>
+  <button data-tab="all"><span>전체</span></button>
+  <button data-tab="verify"><span>검증</span></button>
+  <button data-tab="guide"><span>설명서</span></button>
+</nav>
+
+<script src="app.js?v=1"></script>
+</body>
+</html>

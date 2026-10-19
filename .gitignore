@@ -1,0 +1,11 @@
+# 파이썬
+__pycache__/
+*.pyc
+.venv/
+
+# 백테스트 일봉 캐시 — 8MB 가 넘고, 10년 일봉은 매번 다시 받아도 된다.
+# (GitHub Actions 는 매 실행마다 새로 받는다)
+data/.backtest_cache.json
+
+# OS
+.DS_Store

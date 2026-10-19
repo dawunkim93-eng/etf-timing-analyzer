@@ -1,0 +1,78 @@
+name: ETF 데이터 갱신
+
+# 30분마다 지표를 다시 계산한다.
+#   - 미국 장중(13:30~21:00 UTC · 서머타임 기준)
+#   - 한국 장중(00:00~06:30 UTC · 서머타임 없음)
+#   - 장외·주말은 2시간 간격. 실질 변경이 없으면 커밋하지 않는다.
+#
+# 공개 저장소여야 Actions 무료 한도(월 2,000분)에 걸리지 않는다.
+
+on:
+  schedule:
+    - cron: "0,30 13-21 * * 1-5"
+    - cron: "0,30 00-06 * * 1-5"
+    - cron: "30 */2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: etf-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: 시세·지표 수집
+        run: |
+          pip install -r requirements.txt
+          python scripts/fetch_etf.py all
+
+      - name: 데이터 무결성 검사
+        run: python scripts/validate_data.py
+
+      - name: 백테스트 갱신
+        run: python scripts/backtest.py --refresh
+
+      - name: 변화 없으면 커밋 생략
+        id: check
+        run: |
+          # updated_at 타임스탬프만 바뀐 경우(장외·주말)는 커밋하지 않는다.
+          # history.json 에 새 날짜가 추가된 경우만 예외로 커밋한다.
+          if [ -z "$(git status --porcelain -- data/history.json)" ]; then
+            jq -S 'del(.updated_at, .updated_at_kst)' data/etf_us.json > /tmp/new_us.json
+            jq -S 'del(.updated_at, .updated_at_kst)' data/etf_kr.json > /tmp/new_kr.json
+            git show HEAD:data/etf_us.json 2>/dev/null | jq -S 'del(.updated_at, .updated_at_kst)' > /tmp/old_us.json || echo '{}' > /tmp/old_us.json
+            git show HEAD:data/etf_kr.json 2>/dev/null | jq -S 'del(.updated_at, .updated_at_kst)' > /tmp/old_kr.json || echo '{}' > /tmp/old_kr.json
+            if cmp -s /tmp/new_us.json /tmp/old_us.json && cmp -s /tmp/new_kr.json /tmp/old_kr.json; then
+              echo "실질 변경 없음 — 커밋 생략"
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: 커밋
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/etf_us.json data/etf_kr.json data/history.json data/backtest.json
+          git commit -m "chore: ETF 데이터 갱신 ($(TZ=Asia/Seoul date +%Y-%m-%d\ %H:%M)\ KST)"
+          for attempt in 1 2 3; do
+            if git push; then exit 0; fi
+            echo "push 실패 — 재시도 ($attempt)"
+            git pull --rebase --autostash || true
+            sleep $((attempt * 5))
+          done
+          echo "::warning::push 에 실패했습니다."
