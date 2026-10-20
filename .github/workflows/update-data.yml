@@ -44,6 +44,9 @@ jobs:
       - name: 백테스트 갱신
         run: python scripts/backtest.py --refresh
 
+      - name: 캐시 무효화
+        run: python scripts/cache_bust.py
+
       - name: 변화 없으면 커밋 생략
         id: check
         run: |

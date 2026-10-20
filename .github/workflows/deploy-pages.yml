@@ -9,6 +9,7 @@ on:
     paths:
       - "index.html"
       - "app.js"
+      - "scripts/cache_bust.py"
       - "styles.css"
       - "data/etf_us.json"
       - "data/etf_kr.json"
@@ -35,6 +36,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+
+      - name: 캐시 무효화 (내용 해시를 쿼리에)
+        run: python scripts/cache_bust.py
 
       - uses: actions/configure-pages@v5
 

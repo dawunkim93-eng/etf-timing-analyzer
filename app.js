@@ -201,6 +201,7 @@ function renderBuy(etfs) {
 }
 
 function signalCard(e, isRegime) {
+  const regime = state.data?.regime;
   const d = state.data;
   const lowOk = e.from_low_pct !== null && e.from_low_pct <= 10;
   const rsiOk = e.rsi !== null && e.rsi <= 50;
