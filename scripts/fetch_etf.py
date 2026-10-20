@@ -35,6 +35,11 @@ from universe import (  # noqa: E402
     BEAR_LOOKBACK,
     BARS_FOR_52W,
     DEPTH_SWEET_SPOT,
+    KR_FG_COMPONENTS,
+    KR_FG_HISTORY_DAYS,
+    KR_FG_HISTORY_URL,
+    KR_FG_URL,
+    kr_fg_rating,
     FG_COMPONENTS,
     FG_HISTORY_DAYS,
     FG_RATINGS,
@@ -367,6 +372,89 @@ def fetch_fear_greed(session) -> dict | None:
     }
 
 
+def fetch_kr_fear_greed(session) -> dict | None:
+    """한국 공포·탐욕 지수 (민간 서비스 계산값).
+
+    Supabase 공개 버킷에서 가져온다. 인증 불필요, CORS '*' 라
+    브라우저에서 직접 fetch 도 가능하다.
+
+    ★ 한국에는 공식 공포·탐욕 지수가 없다. KRX 는 VKOSPI 등
+      변동성 지수만 공표하고, 이 값은 민간 서비스가 계산한 것이다.
+      다른 서비스(feargree-api 등)와 값이 다르다. 섞지 말 것.
+    """
+    try:
+        resp = session.get(KR_FG_URL, timeout=20)
+        if resp.status_code != 200:
+            print(f"  ! 한국 공포·탐욕 HTTP {resp.status_code}")
+            return None
+        payload = resp.json()
+    except Exception as exc:  # noqa: BLE001
+        print(f"  ! 한국 공포·탐욕 수집 실패: {type(exc).__name__}")
+        return None
+
+    kr = payload.get("kr") or {}
+    score = kr.get("score")
+    if not isinstance(score, (int, float)):
+        print("  ! 한국 공포·탐욕 점수 파싱 실패")
+        return None
+
+    comps = (kr.get("components") or {})
+    components = []
+    for key, label in KR_FG_COMPONENTS:
+        v = comps.get(key)
+        if not isinstance(v, (int, float)):
+            continue
+        cko, cen = kr_fg_rating(float(v))
+        components.append({
+            "key": key,
+            "label": label,
+            "score": rnd(v, 1),
+            "rating": cen,
+            "rating_ko": cko,
+        })
+
+    ko, en = kr_fg_rating(float(score))
+    return {
+        "score": rnd(score, 1),
+        "rating": en,
+        "rating_ko": ko or kr.get("label_ko", ""),
+        "label_ko": kr.get("label_ko", ""),
+        "label_en": kr.get("label_en", ""),
+        "components": components,
+        "date": payload.get("date"),
+        "updated_at": kr.get("updated_at") or payload.get("updated_at"),
+        "source": "Supabase 공개 버킷 (민간 계산 지수)",
+    }
+
+
+def fetch_kr_fear_greed_history(session) -> list[dict]:
+    """한국 공포·탐욕 30일 이력 (stockhub).
+
+    ★ 주의: stockhub 은 **평일만 갱신**한다. 주말에 값이 고정돼서
+      스파크라인에 평평한 구간이 보인다. 실제 변동이 아니다.
+    """
+    try:
+        resp = session.get(KR_FG_HISTORY_URL, timeout=20)
+        if resp.status_code != 200:
+            print(f"  ! 한국 공포·탐욕 이력 HTTP {resp.status_code}")
+            return []
+        data = (resp.json() or {}).get("data") or []
+    except Exception as exc:  # noqa: BLE001
+        print(f"  ! 한국 공포·탐욕 이력 실패: {type(exc).__name__}")
+        return []
+
+    out = []
+    for row in data:
+        day = row.get("date")
+        val = row.get("kr")
+        if not day or not isinstance(val, (int, float)):
+            continue
+        ko, en = kr_fg_rating(float(val))
+        out.append({"d": day, "y": rnd(val, 1), "r": en, "r_ko": ko})
+    out.sort(key=lambda r: r["d"])
+    return out[-KR_FG_HISTORY_DAYS:]
+
+
 def fetch_vix(session) -> dict | None:
     """VIX (CBOE 시장 변동성 지수).
 
@@ -685,6 +773,17 @@ def collect_market(market: str, session) -> dict:
     if vix:
         print(f"    VIX {vix['current']} · 52주고점 대비 {vix['ratio_52w']}%")
 
+    # 한국 공포·탐욕 — 한국 시장만. 인증 불필요(공개 버킷).
+    kr_fear_greed = None
+    kr_fg_history: list[dict] = []
+    if market == "kr":
+        print("  한국 공포·탐욕 수집 중…")
+        kr_fear_greed = fetch_kr_fear_greed(session)
+        kr_fg_history = fetch_kr_fear_greed_history(session)
+        if kr_fear_greed:
+            print(f"    {kr_fear_greed['score']} ({kr_fear_greed['rating_ko']}) · "
+                  f"구성요소 {len(kr_fear_greed['components'])}개 · 이력 {len(kr_fg_history)}일")
+
     etfs: list[dict] = []
     failed: list[str] = []
     for code, name, category, theme in rows:
@@ -734,6 +833,8 @@ def collect_market(market: str, session) -> dict:
         "etfs": etfs,
         "failed": failed,
         "fear_greed": fear_greed,
+        "kr_fear_greed": kr_fear_greed,
+        "kr_fg_history": kr_fg_history,
         "vix": vix,
         "rules": {
             "low_from_52w": SIGNAL_LOW_FROM_52W,

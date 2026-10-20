@@ -299,6 +299,37 @@ def main() -> None:
             if not isinstance(v, (int, float)) or not (0 <= v <= 100):
                 err(f"{market.upper()}: 구성요소 {c.get('label')} 점수 이상 ({v!r})")
                 break
+        # 한국 공포·탐욕 (한국 시장만)
+        if market == "kr":
+            kfg = (data_cache.get(market) or {}).get("kr_fear_greed")
+            if not kfg:
+                warn("KR: kr_fear_greed 데이터 없음 — 카드 미표시")
+            else:
+                kscore = kfg.get("score")
+                if not isinstance(kscore, (int, float)) or not (0 <= kscore <= 100):
+                    err(f"KR: kr_fear_greed.score={kscore!r} — 0~100 이어야 함")
+                if not kfg.get("rating_ko"):
+                    err("KR: kr_fear_greed.rating_ko 없음")
+                kcomps = kfg.get("components") or []
+                if len(kcomps) != 5:
+                    warn(f"KR: kr_fear_greed 구성요소 {len(kcomps)}개 (보통 5개)")
+                for c in kcomps:
+                    v = c.get("score")
+                    if not isinstance(v, (int, float)) or not (0 <= v <= 100):
+                        err(f"KR: 구성요소 {c.get('label')} 점수 이상 ({v!r})")
+                        break
+                khist = (data_cache.get(market) or {}).get("kr_fg_history") or []
+                if len(khist) > 30:
+                    err(f"KR: kr_fg_history {len(khist)}일 — 30일 초과")
+                kdays = [h.get("d") for h in khist]
+                if len(set(kdays)) != len(kdays):
+                    err("KR: kr_fg_history 에 중복 날짜")
+                for h in khist:
+                    v = h.get("y")
+                    if not isinstance(v, (int, float)) or not (0 <= v <= 100):
+                        err(f"KR: kr_fg_history 값 이상 ({v!r})")
+                        break
+
         vix = (data_cache.get(market) or {}).get("vix")
         if vix:
             cur = vix.get("current")

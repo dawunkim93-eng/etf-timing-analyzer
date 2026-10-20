@@ -270,6 +270,58 @@ FG_COMPONENTS = [
     ("safe_haven_demand", "안전자산 수요"),
 ]
 
+# ------------------------------------------------- 한국 공포 · 탐욕
+# ★ 한국에는 "공식" 공포·탐욕 지수가 없다 ★
+# KRX는 VKOSPI·KVIX 등 변동성 지수만 공표하고, 공포·탐욕 지수는
+# 전부 민간 서비스가 각각 계산한다. 그래서 소스마다 값이 다르다
+# (2026-10-20 실측: Supabase 18 / feargree-api 27).
+#
+# 여기 쓰는 2곳은 같은 백엔드다 — 같은 날짜 us 값이 일치한다(23=23).
+#   Supabase : 현재값 + 구성요소 (이력 없음)
+#   stockhub : 30일 이력
+# 인증은 필요 없다. 공개 버킷이고 CORS 가 '*' 다.
+#
+# ⚠️ stockhub 은 **평일만 갱신**한다. 주말에 값이 고정된다.
+# ⚠️ 점수 → 등급 경계는 GitHub 지수와 동일하게 0-24/25-44/45-54/55-74/75-100.
+KR_FG_URL = (
+    "https://giuxbisydiqiapugqqmq.supabase.co/storage/v1/object/public/"
+    "news-data/fear-greed.json"
+)
+KR_FG_HISTORY_URL = "https://stockhub.kr/api/fear-greed/history"
+KR_FG_HISTORY_DAYS = 30
+# Supabase 응답의 components 키 → (한글 라벨, 등급)
+KR_FG_COMPONENTS = [
+    ("momentum", "시장 모멘텀"),
+    ("price_strength", "주가 강도"),
+    ("volume", "거래량"),
+    ("vix", "변동성"),
+    ("safe_haven", "안전자산 선호"),
+]
+# 점수 → 등급 (0~100). GitHub kospi-feargreedindex 와 같은 경계.
+KR_FG_RATINGS = [
+    (0, 24, "극도의 공포", "extreme fear"),
+    (25, 44, "공포", "fear"),
+    (45, 54, "중립", "neutral"),
+    (55, 74, "탐욕", "greed"),
+    (75, 100, "극도의 탐욕", "extreme greed"),
+]
+# 장기 통계 검증용 (GitHub, 2개월 지연 — 현재값으로 쓰지 않는다)
+KR_FG_GITHUB_URL = (
+    "https://raw.githubusercontent.com/immanuelk1m/kospi-feargreedindex/"
+    "main/assets/js/json/index.json"
+)
+
+
+def kr_fg_rating(score: float | None) -> tuple[str, str]:
+    """한국 공포·탐욕 점수 → (한글 등급, 영문 등급)."""
+    if score is None:
+        return "", ""
+    for lo, hi, ko, en in KR_FG_RATINGS:
+        if lo <= score <= hi:
+            return ko, en
+    return "", ""
+
+
 # ------------------------------------------------- 이력 등급
 # ETF 가 상장한 지 얼마나 지났는지에 따라 "52주 저점" 규칙을 쓸 수 있는지가
 # 갈린다. 신규 상장 ETF 는 52주 저점 자체가 존재하지 않으므로

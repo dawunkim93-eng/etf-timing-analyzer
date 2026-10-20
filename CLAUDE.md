@@ -58,6 +58,25 @@ FG_COMPONENTS = [("market_momentum_sp500", "S&P500 모멘텀"), ...]   # 8개
 ★ CNN 등급 경계는 0~25 / 25~45 / 45~55 / 55~75 / 75~100. 10점 단위로
 자르면 등급이 깨진다.
 
+**한국 공포·탐욕** (`universe.py`)
+
+```python
+KR_FG_URL = "https://giuxbisydiqiapugqqmq.supabase.co/storage/v1/object/public/news-data/fear-greed.json"
+KR_FG_HISTORY_URL = "https://stockhub.kr/api/fear-greed/history"
+KR_FG_GITHUB_URL = "https://raw.githubusercontent.com/immanuelk1m/kospi-feargreedindex/main/assets/js/json/index.json"
+```
+
+★ **한국에는 공식 공포·탐욕 지수가 없다.** KRX 는 VKOSPI 등 변동성 지수만
+  공표하고, 공포·탐욕은 전부 **민간 서비스가 각각 계산**한다.
+  그래서 소스마다 값이 다르다 (Supabase 18 / feargree-api 27).
+  **서로 다른 서비스의 값을 섞거나 평균내지 않는다.**
+★ Supabase 는 현재값만 있고 **이력이 없다**. 이력은 stockhub 에서 따로 받는다.
+  둘은 같은 백엔드 (같은 날짜 us 값 일치 확인).
+★ stockhub 은 **평일만 갱신**한다. 주말에 값이 고정 → 스파크라인에 평평한 구간.
+★ GitHub 이력은 **2개월 지연**. 현재값으로 쓰지 않고 통계 검증 전용.
+★ 점수→등급 경계는 0-24/25-44/45-54/55-74/75-100 (GitHub 지수와 동일).
+★ 인증 불필요. 공개 버킷이고 CORS 가 `*` 다.
+
 **이력 등급** (`universe.py`)
 
 ```python
@@ -182,7 +201,7 @@ DEPTH_LOW_SAMPLE = 500
 ```bash
 python scripts/fetch_etf.py all
 python scripts/validate_data.py
-python scripts/backtest.py --refresh   # 백테스트 + 낙폭 + 공포지수 분석을 함께 돌린다
+python scripts/backtest.py --refresh   # 백테스트 + 낙폭 + 공포지수(미국·한국) 분석을 함께 돌린다
 ```
 
 `validate_data.py` 가 실패하면 배포하지 않는다. 신호 플래그가 원시값과

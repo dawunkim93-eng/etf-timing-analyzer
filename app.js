@@ -215,7 +215,9 @@ function renderMarketSummary() {
   if (b.regime_dd !== null && b.regime_dd !== undefined) {
     bits.push(`고점 대비 ${pct(b.regime_dd)}`);
   }
-  const fg = d.fear_greed;
+  // 한국은 민간 계산 지수, 미국은 CNN 공식 지수
+  const isKr = state.market === 'kr';
+  const fg = isKr ? d.kr_fear_greed : d.fear_greed;
   if (fg) bits.push(`공포 ${num(fg.score, 0)}`);
   text.textContent = bits.length ? bits.join(' · ') : '시장 상황 보기';
 }
@@ -262,6 +264,31 @@ function renderFearGreedSummary() {
   const fg = state.fearGreed;
   const el = $('fg-summary');
   if (!el) return;
+  const isKr = state.market === 'kr';
+  const kr = state.fearGreed?.kr;
+
+  if (isKr) {
+    if (!kr) {
+      el.innerHTML = '<div class="empty">한국 공포·탐욕 분석 결과가 없습니다.</div>';
+      return;
+    }
+    const kSweet = (kr.buckets || []).find((b) => b.label === 'extreme fear');
+    el.innerHTML = `
+      <div class="guide">
+        <p><b>공포가 극심할수록 매수 신호의 성과가 좋다.</b>
+        한국 공포·탐욕이 극단적 공포였던 날은 평균 <b>${kSweet ? num(kSweet.avg_signals, 1) : '—'}개</b>의
+        한국 ETF 가 매수 신호를 냈고, 이후 21거래일 KOSPI 수익률은
+        평균 <b>${kSweet ? pct(kSweet.avg_21d_kospi_pct, 2) : '—'}</b>,
+        승률 <b>${kSweet ? kSweet.win_pct : '—'}%</b>였다
+        (n=${kSweet ? kSweet.n_days : '—'}, ${kr.source ? esc(kr.source) : '4.5년'}).</p>
+        <p>한국 공포·탐욕 점수와 한국 ETF 매수 신호수의 상관계수는
+        <b>${kr.corr !== null && kr.corr !== undefined ? kr.corr : '—'}</b>다.
+        (점수가 낮을수록 — 즉 공포가 클수록 — 매수 신호가 많다.)</p>
+        <p><button class="link-btn" data-goto="verify">검증 탭에서 자세히 ›</button></p>
+      </div>`;
+    return;
+  }
+
   if (!fg) {
     el.innerHTML = '<div class="empty">공포지수 분석 결과가 없습니다.</div>';
     return;
@@ -270,26 +297,29 @@ function renderFearGreedSummary() {
   const vSweet = (fg.vix_buckets || []).find((b) => b.lo === 20);
   el.innerHTML = `
     <div class="guide">
-      <p><b>공포가 극심할수록 매수 신호의 성과가 좋다.</b></p>
-      <ul>
-        <li>Fear &amp; Greed 가 extreme fear 였던 날: SPY 21거래일 후
-        평균 <b>${sweet ? pct(sweet.avg_21d_pct, 2) : '—'}</b>,
-        승률 <b>${sweet ? sweet.win_pct : '—'}%</b> (n=${sweet ? sweet.n : '—'}, 최근 1년)</li>
-        <li>10년 검증 (VIX 52주 고점 대비 20~30% 구간):
-        평균 <b>${vSweet ? pct(vSweet.avg_21d_pct, 2) : '—'}</b>,
-        승률 <b>${vSweet ? vSweet.win_pct : '—'}%</b> (n=${vSweet ? vSweet.n : '—'})</li>
-      </ul>
+      <p><b>공포가 극심할수록 매수 신호의 성과가 좋다.</b>
+      CNN Fear & Greed 가 extreme fear 였던 날은 SPY 21거래일 후
+      평균 <b>${sweet ? pct(sweet.avg_21d_pct, 2) : '—'}</b>,
+      승률 <b>${sweet ? sweet.win_pct : '—'}%</b> 였다
+      (n=${sweet ? sweet.n : '—'}, 최근 1년).</p>
+      <p>10년 검증도 같은 방향이다. VIX 가 52주 고점 대비
+      <b>20~30%</b> 구간(=극심한 공포)이었을 때 SPY 21거래일 수익률은
+      <b>${vSweet ? pct(vSweet.avg_21d_pct, 2) : '—'}</b>,
+      승률 <b>${vSweet ? vSweet.win_pct : '—'}%</b> (n=${vSweet ? vSweet.n : '—'}).</p>
       <p><button class="link-btn" data-goto="verify">검증 탭에서 자세히 ›</button></p>
     </div>`;
 }
 
-/* ---------------- Fear & Greed ---------------- */
+
 function renderFearGreed() {
   const d = state.data;
   const el = $('fg-body');
   if (!d || !el) return;
-  const fg = d.fear_greed;
+  // 한국은 민간 계산 지수, 미국은 CNN 공식 지수
+  const isKr = state.market === 'kr';
+  const fg = isKr ? d.kr_fear_greed : d.fear_greed;
   const vix = d.vix;
+  const hist = isKr ? (d.kr_fg_history || []) : ((d.fear_greed && d.fear_greed.history) || []);
 
   if (!fg) {
     el.innerHTML = '<div class="empty">공포·탐욕 지수를 불러오지 못했습니다.</div>';
@@ -297,7 +327,6 @@ function renderFearGreed() {
   }
 
   const g = fgGrade(fg.rating);
-  const hist = fg.history || [];
   const y = hist.map((h) => h.y);
   // 등급별 색으로 스파크라인 (점수 자체보다 등급 구간을 보여준다)
   const colorBy = (v) => {
@@ -369,23 +398,24 @@ function renderFearGreed() {
         <div class="fg-score rg-${g}">${num(fg.score, 1)}</div>
       </div>
       <div class="fg-label rg-${g}">${esc(fg.rating_ko || fg.rating)}
-        <small>CNN Fear & Greed · ${esc(fg.rating || '')}</small>
+        <small>${isKr ? '민간 서비스 계산 지수 · Supabase 공개 버킷' : `CNN Fear & Greed · ${esc(fg.rating || '')}`}</small>
       </div>
     </div>
     <div class="fg-gauge"><div class="fg-marker" style="left:${Math.max(1, Math.min(99, fg.score))}%"></div></div>
     <div class="fg-scale"><span>극심한 공포 0</span><span>중립 50</span><span>극심한 탐욕 100</span></div>
-    <div class="fg-prev">
+    ${isKr ? '' : `<div class="fg-prev">
       ${prev('어제', fg.prev_close)}
       ${prev('1주 전', fg.prev_week)}
       ${prev('1개월 전', fg.prev_month)}
       ${prev('1년 전', fg.prev_year)}
-    </div>
+    </div>`}
     ${spark}
     <div class="fg-comps">${comps}</div>
     ${vixLine}
     <div class="fg-note">
-      최근 ${hist.length}일 (CNN 제공 범위). 8개 구성요소로 계산된다.
+      최근 ${hist.length}일. 구성요소 ${(fg.components || []).length}개로 계산된다.
       <b>매수 신호 판정에는 쓰지 않는다</b> — 독립적인 참고 지표다.
+      ${isKr ? '한국 지수는 공개 기관이 아니라 민간 서비스가 계산한다.' : ''}
     </div>`;
 }
 
@@ -829,10 +859,31 @@ function renderFearGreedVerify() {
       <td>${b.win_pct}%</td>
     </tr>`);
   }
+  // 한국 공포·탐욕 구간 (민간 계산 지수 — 공식 지수가 아니다)
+  const kr = state.fearGreed?.kr;
+  if (kr && kr.buckets) {
+    for (const b of kr.buckets) {
+      const g = fgGrade(b.label);
+      rows.push(`<tr style="border-top:2px solid var(--line)">
+        <td class="c rg-${g}">한국 ${esc(b.label_ko || b.label)}</td>
+        <td class="mute">${esc(kr.source || '')}</td>
+        <td>${b.n_days}</td>
+        <td>${num(b.avg_signals, 1)}개</td>
+        <td class="${cls2(b.avg_21d_kospi_pct)}">${pct(b.avg_21d_kospi_pct, 2)}</td>
+        <td>${b.win_pct}%</td>
+      </tr>`);
+    }
+  }
   table.innerHTML = `
     <thead><tr><th>구간</th><th>근거</th><th>일수</th><th>평균신호수</th>
-    <th>SPY 21일</th><th>승률</th></tr></thead>
+    <th>21일 후</th><th>승률</th></tr></thead>
     <tbody>${rows.join('')}</tbody>`;
+  const krNote = state.fearGreed?.kr;
+  if (krNote) {
+    table.insertAdjacentHTML('afterend',
+      `<div class="fg-note">한국 행은 21거래일 후 <b>KOSPI</b> 수익률, 위의 미국/VIX 행은 <b>SPY</b> 수익률이다.
+       한국 지수는 <b>공식 지수가 아니라 민간 서비스가 계산한 값</b>이라 서비스마다 값이 다르다.</div>`);
+  }
 }
 
 function cls2(v) {
@@ -1177,32 +1228,59 @@ function renderGuide() {
       저점 근처에 있다는 뜻이다.</div>
     </div>`;
 
-  // 공포지수 설명
+  // 공포지수 설명 (한국 탭은 한국 지수, 미국 탭은 CNN)
+  const isKr = state.market === 'kr';
   const fgv = state.fearGreed;
-  const fgSweet = fgv?.fg_buckets?.find((x) => x.label === 'extreme fear');
-  const vSweet = fgv?.vix_buckets?.find((x) => x.lo === 20);
-  $('g-fg').innerHTML = `
-    <div class="guide">
-      <h4>CNN Fear & Greed Index (미국 기준)</h4>
-      <p>0~100 점수와 5개 등급(극심한 공포 · 공포 · 중립 · 탐욕 · 극심한 탐욕)이다.
-      8개 구성요소(S&P500 모멘텀 · 주가 강도 · 시장 폭 · 풋/콜 비율 · VIX 변동성 ·
-      저등급채 수요 · 안전자산 수요)를 합산해 만든다.
-      카드는 <b>시장 탭</b>에 있다.</p>
-      <h4>공포가 극심할수록 매수 신호 성과가 좋다</h4>
-      <ul>
-        <li>Fear &amp; Greed 가 extreme fear 였던 날: SPY 21거래일 후
-        평균 <b>${fgSweet ? pct(fgSweet.avg_21d_pct, 2) : '—'}</b>,
-        승률 <b>${fgSweet ? fgSweet.win_pct : '—'}%</b> (n=${fgSweet ? fgSweet.n : '—'}, 최근 1년)</li>
-        <li>10년 검증 (VIX 52주 고점 대비 20~30% 구간):
-        평균 <b>${vSweet ? pct(vSweet.avg_21d_pct, 2) : '—'}</b>,
-        승률 <b>${vSweet ? vSweet.win_pct : '—'}%</b> (n=${vSweet ? vSweet.n : '—'})</li>
-      </ul>
-      <div class="warnp"><b>단, 매수 신호 판정에는 쓰지 않는다.</b>
-      지금 규칙(저점+10% · RSI≤50 · 국면)과 독립적인 참고 지표로만 쓴다.
-      또 CNN 은 <b>252일(1년)치만</b> 제공하므로 10년 검증은 VIX 로 재구성했다.
-      VIX 비율('변동성의 위치')과 Fear &amp; Greed 점수('심리지수')는
-      <b>사실상 무관</b>하다(상관계수 +0.01). 같은 숫자를 다른 각도로 보는 게 아니다.</div>
-    </div>`;
+  if (isKr) {
+    const kr = state.fearGreed?.kr;
+    const kSweet = kr?.buckets?.find((x) => x.label === 'extreme fear');
+    $('g-fg').innerHTML = `
+      <div class="guide">
+        <h4>한국 공포 · 탐욕 지수</h4>
+        <div class="warnp"><b>한국에는 "공식" 공포·탐욕 지수가 없다.</b>
+        한국거래소(KRX)는 VKOSPI·KVIX 등 <b>변동성 지수만</b> 공표하고,
+        공포·탐욕 지수는 전부 <b>민간 서비스가 각각 계산한 결과물</b>이다.
+        그래서 서비스마다 값이 다르다 (2026-10-20 기준 Supabase 18 / feargree-api 27).
+        이 사이트는 Supabase(현재값) + stockhub(30일 이력) 을 쓰며 둘은 같은 백엔드다.</div>
+        <h4>공포가 극심할수록 매수 신호 성과가 좋다</h4>
+        <ul>
+          <li>극단적 공포였던 날: 한국 ETF 평균 <b>${kSweet ? num(kSweet.avg_signals, 1) : '—'}개</b>가
+          매수 신호, 이후 21거래일 KOSPI 평균
+          <b>${kSweet ? pct(kSweet.avg_21d_kospi_pct, 2) : '—'}</b>,
+          승률 <b>${kSweet ? kSweet.win_pct : '—'}%</b> (n=${kSweet ? kSweet.n_days : '—'}, 4.5년)</li>
+          <li>한국 공포·탐욕 점수 ↔ 한국 ETF 매수 신호수 상관계수
+          <b>${kr?.corr !== null && kr?.corr !== undefined ? kr.corr : '—'}</b></li>
+        </ul>
+        <div class="warnp"><b>매수 신호 판정에는 쓰지 않는다.</b> 지금 규칙과 독립적인
+        참고 지표로만 쓴다. 또 stockhub 이력은 <b>평일만 갱신</b>해서 주말 구간이
+        평평하게 보인다 — 실제 변동이 아니다.</div>
+      </div>`;
+  } else {
+    const fgSweet = fgv?.fg_buckets?.find((x) => x.label === 'extreme fear');
+    const vSweet = fgv?.vix_buckets?.find((x) => x.lo === 20);
+    $('g-fg').innerHTML = `
+      <div class="guide">
+        <h4>CNN Fear & Greed Index (미국 기준)</h4>
+        <p>0~100 점수와 5개 등급(극심한 공포 · 공포 · 중립 · 탐욕 · 극심한 탐욕)이다.
+        8개 구성요소(S&P500 모멘텀 · 주가 강도 · 시장 폭 · 풋/콜 비율 · VIX 변동성 ·
+        저등급채 수요 · 안전자산 수요)를 합산해 만든다.
+        카드는 <b>시장 탭</b>에 있다.</p>
+        <h4>공포가 극심할수록 매수 신호 성과가 좋다</h4>
+        <ul>
+          <li>Fear &amp; Greed 가 extreme fear 였던 날: SPY 21거래일 후
+          평균 <b>${fgSweet ? pct(fgSweet.avg_21d_pct, 2) : '—'}</b>,
+          승률 <b>${fgSweet ? fgSweet.win_pct : '—'}%</b> (n=${fgSweet ? fgSweet.n : '—'}, 최근 1년)</li>
+          <li>10년 검증 (VIX 52주 고점 대비 20~30% 구간):
+          평균 <b>${vSweet ? pct(vSweet.avg_21d_pct, 2) : '—'}</b>,
+          승률 <b>${vSweet ? vSweet.win_pct : '—'}%</b> (n=${vSweet ? vSweet.n : '—'})</li>
+        </ul>
+        <div class="warnp"><b>단, 매수 신호 판정에는 쓰지 않는다.</b>
+        지금 규칙(저점+10% · RSI≤50 · 국면)과 독립적인 참고 지표로만 쓴다.
+        또 CNN 은 <b>252일(1년)치만</b> 제공하므로 10년 검증은 VIX 로 재구성했다.
+        VIX 비율('변동성의 위치')과 Fear &amp; Greed 점수('심리지수')는
+        <b>사실상 무관</b>하다(상관계수 +0.01). 같은 숫자를 다른 각도로 보는 게 아니다.</div>
+      </div>`;
+  }
 
   const b = d.benchmark || {};
   const rg = state.backtest?.variants?.rsi60_plain_bear;

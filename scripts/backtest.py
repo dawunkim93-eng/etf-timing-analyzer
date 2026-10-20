@@ -623,6 +623,15 @@ def main() -> None:
     except Exception as exc:  # noqa: BLE001
         print(f"  ! 공포지수 분석 실패 (나머지 결과는 정상): {exc}")
 
+    # 한국 공포·탐욕 분석 (민간 계산 지수 — 공식 지수가 아니다)
+    try:
+        from kr_fear_greed_analysis import main as kr_fg_main
+
+        print("\n  한국 공포·탐욕 분석…")
+        kr_fg_main()
+    except Exception as exc:  # noqa: BLE001
+        print(f"  ! 한국 공포·탐욕 분석 실패 (나머지 결과는 정상): {exc}")
+
 
 if __name__ == "__main__":
     main()
