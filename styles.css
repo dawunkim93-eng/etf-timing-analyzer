@@ -203,3 +203,10 @@ tr.crashrow td.c::after{content:" 폭락";font-size:.62rem;color:var(--warn-ink)
 /* ---------- RSI 기준일 보조 라벨 ---------- */
 .metric .k.sub{font-size:.58rem;color:var(--ink3);font-weight:500;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 body.dark .metric .k.sub{color:var(--ink3)}
+
+/* ---------- 이력 등급 배지 ---------- */
+.tag.new{background:var(--sell-bg);color:var(--sell-ink)}
+.tag.observe{background:var(--none-bg);color:var(--none-ink);border:1px dashed var(--ink3)}
+.sig-warn{margin-top:7px;padding:6px 9px;background:var(--sell-bg);color:var(--sell-ink);
+  border-radius:8px;font-size:.72rem;line-height:1.5}
+body.dark .sig-warn{background:#332a14;color:#e0c47c}

@@ -207,11 +207,18 @@ function signalCard(e, isRegime) {
   const rsiOk = e.rsi !== null && e.rsi <= 50;
   const maDist = e.ma200_dist_pct;
   const depthLabel = e.signal?.depth_label || '';
+  const level = e.history_level || 'standard';
+  const weeks = e.history_weeks;
   const tags = [
     `<span class="tag cat">${esc(e.category)}</span>`,
     `<span class="tag theme">${esc(e.theme)}</span>`,
     depthLabel ? `<span class="tag depth ${depthCls(depthLabel)}">고점 대비 ${esc(depthLabel)}</span>` : '',
   ];
+  if (level === 'new') {
+    tags.push(`<span class="tag new">신규 · 이력 ${weeks}주</span>`);
+  } else if (level === 'insufficient') {
+    tags.push('<span class="tag observe">이력 부족</span>');
+  }
   if (isRegime) tags.push('<span class="tag star">★ 약세 필터</span>');
   else tags.push(
     regime === 'bull'
@@ -219,15 +226,17 @@ function signalCard(e, isRegime) {
       : '<span class="tag warn">원조건만</span>'
   );
 
+  const unverified = e.signal?.verified === false;
   return `<div class="sig">
     <div class="sig-top">
       <span class="sig-code">${esc(e.code)}</span>
       <span class="sig-name">${esc(e.name)}</span>
     </div>
     <div class="sig-tags" style="margin-top:6px">${tags.join('')}</div>
+    ${unverified ? '<div class="sig-warn">이력 52주 미만 — 저점 기준이 "가용 이력 전체"이며 백테스트로 검증되지 않았습니다</div>' : ''}
     <div class="sig-metrics four">
       <div class="metric">
-        <div class="k">52주 저점 대비</div>
+        <div class="k">${e.is_full_52w ? '52주 저점 대비' : `저점 대비(${e.low_ref_weeks}주)`}</div>
         <div class="v ${lowOk ? 'pass' : 'fail'}">${pct(e.from_low_pct)}</div>
       </div>
       <div class="metric">
@@ -334,6 +343,11 @@ function renderAll(etfs) {
       catSel.appendChild(o);
     }
   }
+  // 카테고리 셀렉트 — 테마도 선택할 수 있게 한다
+  const catSel2 = $('f-cat');
+  if (catSel2 && catSel2.dataset.themed === '1') {
+    catSel2.innerHTML = '<option value="">전체 카테고리</option>';
+  }
   // 낙폭 버킷 셀렉트 — 시장이 바뀌면 개수가 달라지니 매번 다시 만든다
   for (const sel of [$('f-depth'), $('f-depth-all')]) {
     if (!sel) continue;
@@ -385,7 +399,7 @@ function renderAll(etfs) {
   $('all-table').innerHTML = `
     <thead><tr>
       <th>종목</th><th>카테고리</th><th>현재가</th><th>저점대비</th><th>RSI(14주)</th>
-      <th>고점대비</th><th>200일선</th><th>1년</th><th>상태</th>
+      <th>고점대비</th><th>200일선</th><th>1년</th><th>이력</th><th>상태</th>
     </tr></thead>
     <tbody>${rows
       .map(
@@ -398,6 +412,7 @@ function renderAll(etfs) {
       <td class="${e.from_high_pct <= -30 ? 'pos' : ''}">${pct(e.from_high_pct)}</td>
       <td class="${cls(e.ma200_dist_pct)}">${pct(e.ma200_dist_pct)}</td>
       <td class="${cls(e.ret_12m)}">${pct(e.ret_12m)}</td>
+      <td class="mute">${e.history_weeks}주</td>
       <td>${
         e.signal.regime_pass
           ? '<span class="pill p">★약세</span>'
@@ -795,6 +810,13 @@ function renderGuide() {
       둘을 같이 쓰면 <span class="em">바닥을 확인한 반등 후보</span>만 남습니다.</p>
       <div class="warnp">조건 통과만으로 사라는 뜻은 아닙니다. 백테스트에서 이 조건은
       지수를 이기지 못했습니다. "사람들이 떠난 지점이 어디인가"를 찾는 도구로 쓰세요.</div>
+      <h4>추적하는 ETF</h4>
+      <p>현재 시장 <b>${d.etfs.length}</b>종목을 추적한다
+      (미국 70 · 한국 50).
+      섹터는 전부 덮고, 테마는 AUM 상위 600종목을 전수 조사해 빠진 테마를 메웠다
+      (사이버보안·AI·원자력·로봇·인프라·전력인프라·우주·게임·배터리 등).</p>
+      <p>레버리지·인버스 ETF 는 제외했다. 52주 저점 규칙이 의미가 없어진다
+      (매일 2배로 움직여 52주 저점이 계속 갱신된다).</p>
     </div>`;
 
   $('g-sell').innerHTML = `
@@ -842,6 +864,38 @@ function renderGuide() {
       </ul>
       <div class="warnp">매수 타이밍 탭의 "낙폭 필터"로 원하는 구간만 골라 볼 수 있습니다.
       다만 필터가 결과를 좋게 만드는 게 아니라, <b>높은 확신 구간만 골라 보는 도구</b>입니다.</div>
+    </div>`;
+
+  // 신규 상장 ETF 설명
+  const std = d.etfs.filter((e) => e.history_level === 'standard').length;
+  const newL = d.etfs.filter((e) => e.history_level === 'new').length;
+  const ins = d.etfs.filter((e) => e.history_level === 'insufficient').length;
+  $('g-new').innerHTML = `
+    <div class="guide">
+      <h4>이력에 따라 신호 등급이 달라진다</h4>
+      <p>52주 저점 규칙은 <b>52주 이상 살아남은 ETF</b> 에서만 그대로 쓸 수 있다.
+      상장한 지 얼마 안 된 ETF 는 52주 저점 자체가 없기 때문이다.
+      그래서 이력을 세 단계로 나눈다.</p>
+      <ul>
+        <li><span class="em">표준</span> — 52주 이상. 52주 저점 규칙 그대로. 백테스트로 검증됨. (현재 ${std}종목)</li>
+        <li><span class="em">신규</span> — 26~52주. 저점을 <b>가용 이력 전체</b> 로 계산한다.
+        신호는 뜨지만 <b>백테스트로 검증되지 않았다</b> 고 화면에 표시한다. (현재 ${newL}종목)</li>
+        <li><span class="em">관찰</span> — 26주 미만. <b>매수 신호로 승격하지 않는다.</b>
+        지표만 보여준다. (현재 ${ins}종목)</li>
+      </ul>
+      <h4>왜 26주가 경계인가</h4>
+      <p>가상 "상장 1년 ETF" 백테스트(과거 11개 시점, 미국 80종목)로 확인했다.
+      상장을 1년 지났다고 가정하고 최근 1년치만 보고 신호를 낸 결과:</p>
+      <ul>
+        <li>상장 1년: 평균 <b>+9.80%</b>, 승률 <b>75.3%</b>, 알파 -0.01%</li>
+        <li>상장 6주: 평균 <b>-3.37%</b>, 승률 <b>17.9%</b>, 알파 -3.85%</li>
+      </ul>
+      <p>즉 26주 이상이면 규칙이 그대로 작동하지만, 6개월 이내는 명백히 위험하다.
+      주봉 RSI(14) 자체가 15주 최소 이력을 필요로 하므로 그 밑은 애초에 신뢰할 수 없다.</p>
+      <div class="warnp">실전에서 신규 상장 ETF 가 화면에 떠는 일은 드물다.
+      첫 상장 폭락 뒤 이미 저점에서 많이 회복돼 있어서, "저점 +10% 이내" 를
+      만족하지 않는 경우가 많다. 신호가 뜨는 신규 ETF 는 예외적으로
+      저점 근처에 있다는 뜻이다.</div>
     </div>`;
 
   const b = d.benchmark || {};

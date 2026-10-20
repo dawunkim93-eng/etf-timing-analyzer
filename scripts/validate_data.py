@@ -18,8 +18,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from universe import (  # noqa: E402
+    BARS_FOR_52W,
     DEPTH_SWEET_SPOT,
     MARKETS,
+    MIN_BARS_NEW,
+    MIN_BARS_STD,
     REGIME_METHOD,
     REGIME_THRESHOLD,
     RSI_PERIOD,
@@ -133,6 +136,10 @@ def validate_market(market: str) -> None:
         err(f"{where}: rules.regime_method={rules.get('regime_method')} ≠ {REGIME_METHOD}")
     if rules.get("regime_threshold") != REGIME_THRESHOLD:
         err(f"{where}: rules.regime_threshold={rules.get('regime_threshold')} ≠ {REGIME_THRESHOLD}")
+    if rules.get("min_bars_std") != MIN_BARS_STD:
+        err(f"{where}: rules.min_bars_std={rules.get('min_bars_std')} ≠ {MIN_BARS_STD}")
+    if rules.get("min_bars_new") != MIN_BARS_NEW:
+        err(f"{where}: rules.min_bars_new={rules.get('min_bars_new')} ≠ {MIN_BARS_NEW}")
 
     # --- 종목 ---
     etfs = data.get("etfs") or []
@@ -207,6 +214,32 @@ def validate_market(market: str) -> None:
                     warn(f"{w}: 주봉 기준일 {base} 가 금요일이 아님 (휴장일 경우 가능)")
             except ValueError:
                 err(f"{w}: rsi_weekly_date 형식 오류 ({base!r})")
+
+        # --- 이력 등급 정합성 ---
+        level = e.get("history_level")
+        nbars = e.get("bars_count")
+        if level not in ("standard", "new", "insufficient"):
+            err(f"{w}: history_level={level!r} — standard/new/insufficient 이어야 함")
+        elif isinstance(nbars, int):
+            expect = (
+                "standard" if nbars >= MIN_BARS_STD
+                else "new" if nbars >= MIN_BARS_NEW
+                else "insufficient"
+            )
+            if level != expect:
+                err(f"{w}: history_level={level!r} 인데 봉 {nbars}개면 {expect!r} 이어야 함")
+        if e.get("is_full_52w") != (isinstance(nbars, int) and nbars >= BARS_FOR_52W):
+            err(f"{w}: is_full_52w 불일치 (봉 {nbars})")
+        if not isinstance(e.get("history_weeks"), int) or e["history_weeks"] < 0:
+            err(f"{w}: history_weeks 이상한 값 ({e.get('history_weeks')})")
+        if not isinstance(e.get("low_ref_weeks"), int) or e["low_ref_weeks"] < 0:
+            err(f"{w}: low_ref_weeks 이상한 값 ({e.get('low_ref_weeks')})")
+
+        # 신호의 검증 여부 — standard 인데 verified=False 면 오류
+        if level == "standard" and sig.get("verified") is not True:
+            err(f"{w}: standard 등급인데 signal.verified={sig.get('verified')}")
+        if level == "insufficient" and sig.get("raw_pass"):
+            err(f"{w}: 이력부족(insufficient)인데 매수 신호가 TRUE — 승격되면 안 됨")
 
         # 낙폭 버킷 — from_high_pct 와 일치해야 한다
         expect_bucket = depth_bucket(e.get("from_high_pct"))

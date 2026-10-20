@@ -35,6 +35,8 @@ from universe import (  # noqa: E402
     BEAR_LOOKBACK,
     BARS_FOR_52W,
     DEPTH_SWEET_SPOT,
+    MIN_BARS_NEW,
+    MIN_BARS_STD,
     MA_LONG,
     MA_SHORT,
     MARKETS,
@@ -274,6 +276,20 @@ def weekly_rsi_lookup(bars: list[dict]) -> tuple[dict[str, float | None], str | 
     return lookup, base_date, w_rsi
 
 
+def _weeks_between(d0: str, d1: str) -> int:
+    """두 날짜 사이의 실제 경과 주 수 (일수/7, ISO 주 기준).
+
+    봉 수를 5로 나누면 정확하지 않다. 252거래일은 50.4주지만 실제로는
+    1년 ≈ 52주다(공휴일 반영). 화면에 '이력 N주' 로 뜨는 값이라 정확해야 한다.
+    """
+    try:
+        a = dt.date.fromisoformat(d0)
+        b = dt.date.fromisoformat(d1)
+    except ValueError:
+        return 0
+    return max(0, (b - a).days // 7)
+
+
 def swing_regime(
     closes: list[float], dates: list[str], th: float = REGIME_THRESHOLD
 ) -> tuple[str, str, float]:
@@ -337,9 +353,25 @@ def build_indicators(bars: list[dict], market_meta: dict, raw: dict | None = Non
     meta_date = (raw or {}).get("meta_date")
     display_px = meta_price if isinstance(meta_price, (int, float)) and meta_price else px
 
+    # 저·고점 기준 — 252봉이 있으면 52주 저·고점, 없으면 가용 이력 전체.
+    # 슬라이스가 [-252:] 이므로 봉이 부족하면 자동으로 '가용 이력 전체' 가 된다.
     win = bars[-BARS_FOR_52W:]
     low_52w = min(b["low"] for b in win)
     high_52w = max(b["high"] for b in win)
+    # 저점 기준이 몇 주인지 — 봉 수 / 5 로 나누면 정확하지 않다
+    # (252봉 = 50.4주. 실제로는 1년 ≈ 52주 = 260거래일).
+    # 날짜로 실제 경과 주를 계산한다.
+    low_ref_weeks = _weeks_between(win[0]["date"], win[-1]["date"]) if len(win) > 1 else 0
+    is_full_52w = len(win) >= BARS_FOR_52W
+
+    # 이력 등급
+    n_bars = len(bars)
+    if n_bars >= MIN_BARS_STD:
+        history_level = "standard"
+    elif n_bars >= MIN_BARS_NEW:
+        history_level = "new"
+    else:
+        history_level = "insufficient"
 
     ma50 = sma(closes, MA_SHORT)
     ma200 = sma(closes, MA_LONG)
@@ -385,6 +417,12 @@ def build_indicators(bars: list[dict], market_meta: dict, raw: dict | None = Non
         "date": meta_date or dates[-1],
         "low_52w": rnd(low_52w),
         "high_52w": rnd(high_52w),
+        # 저점 기준이 52주인지, 가용 이력 전체인지
+        "low_ref_weeks": low_ref_weeks,
+        "is_full_52w": is_full_52w,
+        # 이력 등급 (standard / new / insufficient)
+        "history_level": history_level,
+        "history_weeks": _weeks_between(bars[0]["date"], bars[-1]["date"]) if n_bars > 1 else 0,
         "from_low_pct": rnd(from_low),
         "from_high_pct": rnd(from_high),
         "rsi": rnd(rsi, 1),
@@ -421,8 +459,14 @@ def apply_signal(etf: dict, regime: str | None) -> dict:
     """
     low_pct = etf.get("from_low_pct")
     rsi = etf.get("rsi")
+    level = etf.get("history_level", "standard")
+
+    # 이력이 26주 미만이면 매수 신호로 승격하지 않는다.
+    # 가상 "상장 6주 ETF" 백테스트에서 평균 -3.37% / 승률 17.9% 로 위험했다.
+    eligible = level != "insufficient"
     raw = (
-        low_pct is not None
+        eligible
+        and low_pct is not None
         and rsi is not None
         and low_pct <= SIGNAL_LOW_FROM_52W
         and rsi <= SIGNAL_RSI_MAX
@@ -436,6 +480,10 @@ def apply_signal(etf: dict, regime: str | None) -> dict:
         # 52주 고점 대비 낙폭 버킷 — 순위 재배치가 아니라 정보 표기용
         "depth_label": bucket,
         "depth_sweet_spot": bucket == DEPTH_SWEET_SPOT,
+        # 이력 26~52주 종목의 신호는 백테스트로 검증되지 않았다
+        # (가상 상장 1년 ETF 백테스트로는 동일하게 작동했지만, 실ETF 표본이 아니다)
+        "verified": level == "standard",
+        "history_level": level,
     }
     return etf
 
@@ -523,9 +571,10 @@ def collect_market(market: str, session) -> dict:
         t = f"{code}{meta['yahoo_suffix']}"
         raw = results.get(t)
         bars = raw["bars"] if raw else None
-        if not bars or len(bars) < BARS_FOR_52W:
+        if not bars or len(bars) < MIN_BARS_NEW:
+            # 26주 미만 — 지표조차 신뢰할 수 없다. 매수 신호로 승격하지 않는다.
             failed.append(code)
-            print(f"  [{len(etfs) + len(failed):2d}/{len(rows)}] {code:7s} 실패 (봉 {len(bars) if bars else 0})")
+            print(f"  [{len(etfs) + len(failed):2d}/{len(rows)}] {code:7s} 이력부족 (봉 {len(bars) if bars else 0})")
             continue
         ind = build_indicators(bars, meta, raw)
         row = {
@@ -539,10 +588,14 @@ def collect_market(market: str, session) -> dict:
         }
         row.update(ind)
         etfs.append(apply_signal(row, regime))
+        level_mark = {"standard": "", "new": " [신규]", "insufficient": " [관찰]"}.get(
+            ind["history_level"], ""
+        )
         print(
             f"  [{len(etfs) + len(failed):2d}/{len(rows)}] {code:7s} "
             f"{str(ind['price']):>12s} 저점+{str(ind['from_low_pct']):>6s}% "
-            f"RSI {str(ind['rsi']):>5s} {'✔' if row['signal']['raw_pass'] else ''}"
+            f"RSI {str(ind['rsi']):>5s}{level_mark} "
+            f"{'✔' if row['signal']['raw_pass'] else ''}"
         )
 
     ok_ratio = len(etfs) / len(rows) if rows else 0
@@ -567,6 +620,8 @@ def collect_market(market: str, session) -> dict:
             "rsi_period": RSI_PERIOD,
             "regime_method": REGIME_METHOD,
             "regime_threshold": REGIME_THRESHOLD,
+            "min_bars_std": MIN_BARS_STD,
+            "min_bars_new": MIN_BARS_NEW,
         },
     }
 
