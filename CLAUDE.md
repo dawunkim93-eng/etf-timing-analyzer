@@ -40,6 +40,24 @@ LT 규칙은 지수의 **전체 경로**가 필요하다(고점·저점 누적 �
 RSI 만 주봉이고, 52주 저·고점 / MA50 / MA200 / 수익률 / 낙폭은 **일봉 그대로**다.
 의도된 설계다. 섞지 말 것.
 
+**Fear & Greed** (`universe.py`)
+
+```python
+FG_URL = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
+FG_HISTORY_DAYS = 252       # CNN 이 주는 1년치뿐
+FG_RATINGS = [("extreme fear", "극심한 공포"), ...]
+FG_COMPONENTS = [("market_momentum_sp500", "S&P500 모멘텀"), ...]   # 8개
+```
+
+★ CNN 은 252일(1년)치만 준다. 10년 검증이 필요하면 **VIX 52주 고점 대비 비율**로
+재구성한다 (`fear_greed_analysis.py`).
+★ VIX 비율과 FG 점수는 **사실상 무관**하다(상관계수 +0.01). '변동성의 위치' 와
+'심리지수' 는 다른 지표다. 설명서에 이 점을 반드시 남긴다.
+★ CNN 이 같은 날짜를 두 번 주는 경우가 있다 → 날짜 기준으로 중복 제거.
+★ 공포지수는 **매수 신호 판정에 쓰지 않는다.** 참고 지표다.
+★ CNN 등급 경계는 0~25 / 25~45 / 45~55 / 55~75 / 75~100. 10점 단위로
+자르면 등급이 깨진다.
+
 **이력 등급** (`universe.py`)
 
 ```python
@@ -148,7 +166,7 @@ DEPTH_LOW_SAMPLE = 500
 ```bash
 python scripts/fetch_etf.py all
 python scripts/validate_data.py
-python scripts/backtest.py --refresh   # 백테스트 + 낙폭 분석을 함께 돌린다
+python scripts/backtest.py --refresh   # 백테스트 + 낙폭 + 공포지수 분석을 함께 돌린다
 ```
 
 `validate_data.py` 가 실패하면 배포하지 않는다. 신호 플래그가 원시값과

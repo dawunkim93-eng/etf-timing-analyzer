@@ -250,11 +250,55 @@
 
 ---
 
+## 시장 공포 · 탐욕 (CNN Fear & Greed)
+
+매수 타이밍 탭 맨 위에 카드가 있다. **CNN Fear & Greed Index** (미국 기준).
+
+- 현재 점수 + 등급 (극심한 공포 / 공포 / 중립 / 탐욕 / 극심한 탐욕)
+- 0~100 게이지
+- 어제 · 1주 전 · 1개월 전 · 1년 전 비교
+- 252일 추이 (등급 구간 색상)
+- **8개 구성요소** (S&P500 모멘텀 · S&P125 모멘텀 · 주가 강도 · 시장 폭 ·
+  풋/콜 비율 · VIX 변동성 · 저등급채 수요 · 안전자산 수요)
+- VIX 현재값 + 52주 고점 대비 비율
+
+### 공포지수와 매수 신호의 관계 (검증)
+
+| Fear & Greed 구간 | 일수 | 평균 신호수 | SPY 21거래일 | 승률 |
+|---|---|---|---|---|
+| **extreme fear** | 41 | 12.0개 | **+4.73%** | **97.4%** |
+| fear | 110 | 14.2개 | +0.57% | 67.0% |
+| neutral | 38 | 12.4개 | +0.08% | 57.1% |
+| greed | 61 | 11.9개 | +0.72% | 47.5% |
+
+**10년 검증** (CNN 은 1년치만 제공하므로 VIX 52주 고점 대비 비율로 재구성):
+
+| VIX 52주 고점 대비 | 일수 | SPY 21거래일 | 승률 |
+|---|---|---|---|
+| **20~30%** (극심한 공포) | 147 | **+1.82%** | **82.3%** |
+| 30~40% | 528 | +1.15% | 70.5% |
+| 40~50% | 589 | +1.40% | 71.8% |
+| 50~60% | 512 | +0.75% | 63.1% |
+| 60~70% | 222 | +0.18% | 59.9% |
+| 70~80% | 129 | +1.65% | 61.2% |
+| 80~90% | 71 | +2.71% | 70.4% |
+| 90~100% | 26 | +2.08% | 80.8% |
+
+→ **공포가 극심할수록 매수 신호의 성과가 좋다.** 두 지표가 같은 방향을 가리킨다.
+
+**주의 두 가지**
+1. **공포지수는 매수 신호 판정에 쓰지 않는다.** 지금 규칙과 독립적인 참고 지표다.
+2. **VIX 비율과 Fear & Greed 점수는 사실상 무관하다** (상관계수 +0.01).
+   VIX 비율은 '변동성의 위치', Fear & Greed 는 '심리지수' 다. 다른 지표다.
+
+---
+
 ## 데이터 출처
 
 | 출처 | 용도 | 갱신 |
 |---|---|---|
-| Yahoo Finance `query2` chart API | 일봉 (미국·한국 ETF) | 장중 30분 / 장외 2시간 |
+| Yahoo Finance `query2` chart API | 일봉 (미국·한국 ETF, VIX) | 장중 30분 / 장외 2시간 |
+| CNN Fear & Greed | 공포·탐욕 지수 + 8개 구성요소 | 장중 30분 / 장외 2시간 |
 | Yahoo Finance screener | 미국 ETF AUM 참고 | 유니버스 정의 시 |
 | 네이버 `etfItemList.nhn` | 한국 ETF 목록 + AUM | 유니버스 정의 시 |
 
@@ -274,11 +318,13 @@ data/etf_kr.json      한국 데이터 (생성물)
 data/history.json     일별 스냅샷 누적 (생성물)
 data/backtest.json    백테스트 결과 (생성물)
 data/depth.json       낙폭 축 분석 (생성물)
+data/feargreed.json  공포지수 분석 (생성물)
 scripts/universe.py   ETF 유니버스 + 규칙 상수
 scripts/fetch_etf.py  수집 + 지표 계산
 scripts/validate_data.py  데이터 무결성 검사
 scripts/backtest.py   백테스트
 scripts/depth_analysis.py  낙폭 축 분석 (backtest.py 에서 함께 실행)
+scripts/fear_greed_analysis.py  공포지수 분석 (backtest.py 에서 함께 실행)
 ```
 
 ## 로컬 실행
@@ -287,7 +333,7 @@ scripts/depth_analysis.py  낙폭 축 분석 (backtest.py 에서 함께 실행)
 pip install -r requirements.txt
 python scripts/fetch_etf.py all      # 수집
 python scripts/validate_data.py      # 무결성 검사
-python scripts/backtest.py --refresh  # 백테스트 + 낙폭 분석
+python scripts/backtest.py --refresh  # 백테스트 + 낙폭 + 공포지수 분석
 python -m http.server 8000           # http://localhost:8000
 ```
 

@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#f7f7f5">
 <meta name="description" content="미국·한국 주요 ETF 타이밍 분석 — 52주 최저가 대비 10% 이내, RSI 50 이하 매수 신호와 익절·손절 타이밍">
 <title>ETF 타이밍 분석</title>
-<link rel="stylesheet" href="styles.css?v=734a8aa6">
+<link rel="stylesheet" href="styles.css?v=bdd4c2d0">
 </head>
 <body>
 
@@ -52,6 +52,13 @@
 
 <!-- ---------- 매수 ---------- -->
 <section class="tabpane on" id="tab-buy">
+  <div class="card fg-card">
+    <div class="card-h">시장 공포 · 탐욕</div>
+    <div class="card-b" id="fg-body">
+      <div class="empty">불러오는 중…</div>
+    </div>
+  </div>
+
   <div class="card">
     <div class="card-h">1순위 · 국면 필터 통과</div>
     <div class="card-b" id="regime-list"></div>
@@ -220,6 +227,12 @@
   </div>
 
   <div class="card">
+    <div class="card-h">공포지수와 매수 신호의 관계</div>
+    <div class="card-b" id="fg-verify"></div>
+    <div class="card-b table-wrap"><table id="fg-table"></table></div>
+  </div>
+
+  <div class="card">
     <div class="card-h">측정 방법과 한계</div>
     <div class="card-b" id="bt-notes"></div>
   </div>
@@ -244,15 +257,19 @@
     <div class="card-b" id="g-new"></div>
   </div>
   <div class="card">
-    <div class="card-h">5 · 시장 국면</div>
+    <div class="card-h">5 · 시장 공포 · 탐욕</div>
+    <div class="card-b" id="g-fg"></div>
+  </div>
+  <div class="card">
+    <div class="card-h">6 · 시장 국면</div>
     <div class="card-b" id="g-regime"></div>
   </div>
   <div class="card">
-    <div class="card-h">6 · 지표 계산 방법</div>
+    <div class="card-h">7 · 지표 계산 방법</div>
     <div class="card-b" id="g-calc"></div>
   </div>
   <div class="card">
-    <div class="card-h">7 · 한계</div>
+    <div class="card-h">8 · 한계</div>
     <div class="card-b" id="g-limits"></div>
   </div>
   <div class="card alert-card">
@@ -273,6 +290,6 @@
   <button data-tab="guide"><span>설명서</span></button>
 </nav>
 
-<script src="app.js?v=81962641"></script>
+<script src="app.js?v=6753a802"></script>
 </body>
 </html>

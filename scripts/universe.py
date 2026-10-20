@@ -239,6 +239,37 @@ REGIME_METHOD = "lt20"      # "lt20" | "ret12"
 REGIME_THRESHOLD = 20.0     # 고점/저점 대비 반전 %
 REGIME_HISTORY_YEARS = 10   # 국면 판정용 벤치마크 이력 (LT 는 전체 경로가 필요)
 
+# ------------------------------------------------- Fear & Greed
+# CNN Fear & Greed Index. 인증 없이 JSON 이 내려온다.
+#   https://production.dataviz.cnn.io/index/fearandgreed/graphdata
+#
+# ★ CNN 은 252일(1년)치만 제공한다. 그 이전은 없다.
+#   그래서 10년 검증이 필요하면 VIX 52주 고점 대비 비율로 재구성한다.
+#   (scripts/backtest.py 의 fear_greed_analysis)
+#
+# 참고: 이 지수는 **매수 신호 판정에 쓰지 않는다.**
+#   지금 규칙(저점+10% · RSI<=50 · 국면)과 독립적인 참고 지표다.
+FG_URL = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
+FG_HISTORY_DAYS = 252       # CNN 이 제공하는 이력 길이
+FG_RATINGS = [
+    ("extreme fear", "극심한 공포"),
+    ("fear", "공포"),
+    ("neutral", "중립"),
+    ("greed", "탐욕"),
+    ("extreme greed", "극심한 탐욕"),
+]
+# 8개 구성요소 — (CNN JSON 키, 한글 라벨)
+FG_COMPONENTS = [
+    ("market_momentum_sp500", "S&P500 모멘텀"),
+    ("market_momentum_sp125", "S&P125 모멘텀"),
+    ("stock_price_strength", "주가 강도"),
+    ("stock_price_breadth", "시장 폭"),
+    ("put_call_options", "풋/콜 비율"),
+    ("market_volatility_vix", "VIX 변동성"),
+    ("junk_bond_demand", "저등급채 수요"),
+    ("safe_haven_demand", "안전자산 수요"),
+]
+
 # ------------------------------------------------- 이력 등급
 # ETF 가 상장한 지 얼마나 지났는지에 따라 "52주 저점" 규칙을 쓸 수 있는지가
 # 갈린다. 신규 상장 ETF 는 52주 저점 자체가 존재하지 않으므로

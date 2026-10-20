@@ -35,6 +35,10 @@ from universe import (  # noqa: E402
     BEAR_LOOKBACK,
     BARS_FOR_52W,
     DEPTH_SWEET_SPOT,
+    FG_COMPONENTS,
+    FG_HISTORY_DAYS,
+    FG_RATINGS,
+    FG_URL,
     MIN_BARS_NEW,
     MIN_BARS_STD,
     MA_LONG,
@@ -288,6 +292,110 @@ def _weeks_between(d0: str, d1: str) -> int:
     except ValueError:
         return 0
     return max(0, (b - a).days // 7)
+
+
+def fetch_fear_greed(session) -> dict | None:
+    """CNN Fear & Greed Index 를 가져온다.
+
+    ★ 외부 API 다라 실패할 수 있다. 실패하면 None 을 돌려주고
+    나머지 데이터(시세·지표)는 계속 진행한다. 카드가 없는 게
+    데이터 전체가 사라지는 것보다 낫다.
+    """
+    try:
+        resp = session.get(FG_URL, timeout=20)
+        if resp.status_code != 200:
+            print(f"  ! Fear&Greed HTTP {resp.status_code}")
+            return None
+        payload = resp.json()
+    except Exception as exc:  # noqa: BLE001
+        print(f"  ! Fear&Greed 수집 실패: {type(exc).__name__}")
+        return None
+
+    fg = payload.get("fear_and_greed") or {}
+    score = fg.get("score")
+    if not isinstance(score, (int, float)):
+        print("  ! Fear&Greed 점수 파싱 실패")
+        return None
+
+    label_ko = dict(FG_RATINGS).get(fg.get("rating", ""), fg.get("rating", ""))
+
+    # 이력 — CNN 은 252일치만 준다
+    history = []
+    for row in (payload.get("fear_and_greed_historical") or {}).get("data") or []:
+        ts = row.get("x")
+        val = row.get("y")
+        if ts is None or val is None:
+            continue
+        try:
+            day = dt.datetime.fromtimestamp(ts / 1000, tz=dt.timezone.utc).strftime("%Y-%m-%d")
+        except (TypeError, ValueError, OSError):
+            continue
+        history.append({"d": day, "y": rnd(val, 1), "r": row.get("rating", "")})
+    # CNN 이 같은 날짜를 두 번 주는 경우가 있다 (2026-10-20 이 그랬음).
+    # 날짜 기준으로 중복 제거하고 마지막 값만 남긴다.
+    dedup: dict[str, dict] = {}
+    for row in history:
+        dedup[row["d"]] = row
+    history = [dedup[d] for d in sorted(dedup)][-FG_HISTORY_DAYS:]
+
+    # 8개 구성요소
+    components = []
+    for key, ko in FG_COMPONENTS:
+        item = payload.get(key) or {}
+        cscore = item.get("score")
+        if not isinstance(cscore, (int, float)):
+            continue
+        components.append({
+            "key": key,
+            "label": ko,
+            "score": rnd(cscore, 1),
+            "rating": item.get("rating", ""),
+            "rating_ko": dict(FG_RATINGS).get(item.get("rating", ""), ""),
+        })
+
+    return {
+        "score": rnd(score, 1),
+        "rating": fg.get("rating", ""),
+        "rating_ko": label_ko,
+        "prev_close": rnd(fg.get("previous_close"), 1),
+        "prev_week": rnd(fg.get("previous_1_week"), 1),
+        "prev_month": rnd(fg.get("previous_1_month"), 1),
+        "prev_year": rnd(fg.get("previous_1_year"), 1),
+        "history": history,
+        "components": components,
+        "updated_at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+
+
+def fetch_vix(session) -> dict | None:
+    """VIX (CBOE 시장 변동성 지수).
+
+    Fear & Greed 는 1년치만 주는데, 한국 탭에도 카드를 보여주고
+    10년 검증을 하려면 VIX 가 필요하다. 시장 공포의 보편적 지표라
+    미국·한국 공통으로 쓸 수 있다.
+    """
+    raw = fetch_chart(session, "^VIX", rng="10y", interval="1d")
+    if not raw or len(raw["bars"]) < 252:
+        print("  ! VIX 수집 실패")
+        return None
+    bars = raw["bars"]
+    closes = [b["close"] for b in bars]
+    dates = [b["date"] for b in bars]
+    # 52주 고점 대비 비율 — "지금 공포가 얼마나极端한가"
+    ratio_series = []
+    for i in range(251, len(bars)):
+        hi = max(closes[i - 251: i + 1])
+        ratio_series.append({
+            "d": dates[i],
+            "y": rnd(closes[i] / hi * 100, 1) if hi else None,
+        })
+    ratio_series = [r for r in ratio_series if r["y"] is not None]
+    return {
+        "current": rnd(closes[-1], 2),
+        "date": dates[-1],
+        "ratio_52w": ratio_series[-1]["y"] if ratio_series else None,
+        "history": ratio_series[-FG_HISTORY_DAYS:],
+    }
 
 
 def swing_regime(
@@ -565,6 +673,18 @@ def collect_market(market: str, session) -> dict:
     else:
         print("  ! 국면 판정 불가 — 신호는 raw_pass 로만 표시")
 
+    # ---- Fear & Greed (CNN) + VIX ----
+    # 두市场 모두 같은 카드를 쓴다. Fear & Greed 는 미국 지수지만
+    # '시장 공포' 라는 공통 개념이고 VIX 로 한국 탭도 채운다.
+    print("  Fear&Greed 수집 중…")
+    fear_greed = fetch_fear_greed(session)
+    if fear_greed:
+        print(f"    {fear_greed['score']} ({fear_greed['rating_ko']}) · 구성요소 {len(fear_greed['components'])}개")
+    print("  VIX 수집 중…")
+    vix = fetch_vix(session)
+    if vix:
+        print(f"    VIX {vix['current']} · 52주고점 대비 {vix['ratio_52w']}%")
+
     etfs: list[dict] = []
     failed: list[str] = []
     for code, name, category, theme in rows:
@@ -613,6 +733,8 @@ def collect_market(market: str, session) -> dict:
         "regime": regime,
         "etfs": etfs,
         "failed": failed,
+        "fear_greed": fear_greed,
+        "vix": vix,
         "rules": {
             "low_from_52w": SIGNAL_LOW_FROM_52W,
             "rsi_max": SIGNAL_RSI_MAX,

@@ -9,6 +9,7 @@ const state = {
   data: null,
   backtest: null,
   depth: null,
+  fearGreed: null,
   exitRsi: 60,
   stopPct: 15,
   filters: { cat: '', sort: 'signal', state: '', depth: '', depthAll: '' },
@@ -18,6 +19,16 @@ const state = {
 const DEPTH_ORDER = ['15% 미만', '15~20%', '20~25%', '25~30%', '30~35%', '35~40%', '40%+'];
 const DEPTH_SWEET = '30~35%';
 const DEPTH_CRASH = '40%+';
+
+/* Fear & Greed 등급 → CSS 클래스 */
+const FG_GRADE = {
+  'extreme fear': 'ef',
+  'fear': 'f',
+  'neutral': 'n',
+  'greed': 'g',
+  'extreme greed': 'eg',
+};
+const fgGrade = (rating) => FG_GRADE[rating] || 'n';
 
 /* 버킷 라벨 → CSS 클래스 (곡점 강조, 폭락 경고) */
 function depthCls(label) {
@@ -105,6 +116,13 @@ async function loadBacktest() {
   } catch {
     state.depth = null;
   }
+  try {
+    const res = await fetch('data/feargreed.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error('없음');
+    state.fearGreed = await res.json();
+  } catch {
+    state.fearGreed = null;
+  }
   renderVerify();
   // 낙폭 설명은 depth.json 이 로드된 뒤에 채워진다
   if (state.data) renderGuide();
@@ -168,10 +186,117 @@ function render() {
     rEl.innerHTML = '<div class="empty">벤치마크를 못 불러와 국면을 판정하지 못했습니다.</div>';
   }
 
+  renderFearGreed();
   renderBuy(etfs);
   renderSell(etfs);
   renderAll(etfs);
   renderGuide();
+}
+
+/* ---------------- Fear & Greed ---------------- */
+function renderFearGreed() {
+  const d = state.data;
+  const el = $('fg-body');
+  if (!d || !el) return;
+  const fg = d.fear_greed;
+  const vix = d.vix;
+
+  if (!fg) {
+    el.innerHTML = '<div class="empty">공포·탐욕 지수를 불러오지 못했습니다.</div>';
+    return;
+  }
+
+  const g = fgGrade(fg.rating);
+  const hist = fg.history || [];
+  const y = hist.map((h) => h.y);
+  // 등급별 색으로 스파크라인 (점수 자체보다 등급 구간을 보여준다)
+  const colorBy = (v) => {
+    if (v < 25) return '#c0392b';
+    if (v < 45) return '#e67e22';
+    if (v < 55) return '#b8b8b2';
+    if (v < 75) return '#2e8b57';
+    return '#1e6b45';
+  };
+  let spark = '';
+  if (y.length > 2) {
+    const w = 340, h = 52, pad = 3;
+    const min = 0, max = 100;
+    const pts = y.map((v, i) => {
+      const x = (i / (y.length - 1)) * (w - 2) + 1;
+      const yy = h - pad - ((v - min) / (max - min)) * (h - pad * 2);
+      return `${x.toFixed(1)},${yy.toFixed(1)}`;
+    });
+    // 등급 경계선 (25/45/55/75)
+    const band = (lo, hi, c) => {
+      const yTop = h - pad - ((hi - min) / (max - min)) * (h - pad * 2);
+      const yBot = h - pad - ((lo - min) / (max - min)) * (h - pad * 2);
+      return `<rect x="0" y="${yTop.toFixed(1)}" width="${w}" height="${(yBot - yTop).toFixed(1)}" fill="${c}" opacity="0.10"/>`;
+    };
+    const last = y[y.length - 1];
+    const lastX = w - 1;
+    const lastY = h - pad - ((last - min) / (max - min)) * (h - pad * 2);
+    spark = `<svg class="fg-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+      ${band(0, 25, '#c0392b')}${band(25, 45, '#e67e22')}${band(45, 55, '#b8b8b2')}
+      ${band(55, 75, '#2e8b57')}${band(75, 100, '#1e6b45')}
+      <polyline points="${pts.join(' ')}" fill="none" stroke="${colorBy(last)}" stroke-width="1.8"
+        stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="${lastX}" cy="${lastY.toFixed(1)}" r="3" fill="${colorBy(last)}"/>
+    </svg>`;
+  }
+
+  const prev = (label, v) => {
+    if (v === null || v === undefined) return `<span>${label} —</span>`;
+    // 이전 값이 현재보다 높으면 그 사이에 점수가 내려간 것 → ▼
+    const diff = fg.score - v;
+    const cls = diff > 0.05 ? 'up' : diff < -0.05 ? 'down' : '';
+    const arrow = diff > 0.05 ? '▲' : diff < -0.05 ? '▼' : '–';
+    return `<span>${label} <b class="${cls}">${Number(v).toFixed(1)}</b> <span class="${cls}">${arrow}</span></span>`;
+  };
+
+  const comps = (fg.components || []).map((c) => {
+    const cg = fgGrade(c.rating);
+    return `<div class="fg-comp">
+      <div class="fg-comp-t">
+        <span class="fg-comp-n">${esc(c.label)}</span>
+        <span class="fg-comp-v rg-${cg}">${num(c.score, 1)}</span>
+      </div>
+      <div class="fg-comp-bar"><div class="fg-comp-fill bg-${cg}" style="width:${Math.max(2, Math.min(100, c.score))}%"></div></div>
+      <span class="fg-comp-r">${esc(c.rating_ko || c.rating)}</span>
+    </div>`;
+  }).join('');
+
+  const vixLine = vix
+    ? `<div class="fg-prev" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
+        <span>VIX <b>${num(vix.current, 2)}</b></span>
+        <span>52주 고점 대비 <b>${num(vix.ratio_52w, 1)}%</b></span>
+        <span style="color:var(--ink3)">공포가 클수록 낮아집니다</span>
+      </div>`
+    : '';
+
+  el.innerHTML = `
+    <div class="fg-head">
+      <div>
+        <div class="fg-score rg-${g}">${num(fg.score, 1)}</div>
+      </div>
+      <div class="fg-label rg-${g}">${esc(fg.rating_ko || fg.rating)}
+        <small>CNN Fear & Greed · ${esc(fg.rating || '')}</small>
+      </div>
+    </div>
+    <div class="fg-gauge"><div class="fg-marker" style="left:${Math.max(1, Math.min(99, fg.score))}%"></div></div>
+    <div class="fg-scale"><span>극심한 공포 0</span><span>중립 50</span><span>극심한 탐욕 100</span></div>
+    <div class="fg-prev">
+      ${prev('어제', fg.prev_close)}
+      ${prev('1주 전', fg.prev_week)}
+      ${prev('1개월 전', fg.prev_month)}
+      ${prev('1년 전', fg.prev_year)}
+    </div>
+    ${spark}
+    <div class="fg-comps">${comps}</div>
+    ${vixLine}
+    <div class="fg-note">
+      최근 ${hist.length}일 (CNN 제공 범위). 8개 구성요소로 계산된다.
+      <b>매수 신호 판정에는 쓰지 않는다</b> — 독립적인 참고 지표다.
+    </div>`;
 }
 
 /* ---------------- 매수 ---------------- */
@@ -559,6 +684,67 @@ function renderDepth() {
     </div>`;
 }
 
+function renderFearGreedVerify() {
+  const fg = state.fearGreed;
+  const body = $('fg-verify');
+  const table = $('fg-table');
+  if (!fg) {
+    body.innerHTML = '<div class="empty">공포지수 분석 결과가 없습니다. scripts/backtest.py 를 실행해 data/feargreed.json 을 생성하세요.</div>';
+    table.innerHTML = '';
+    return;
+  }
+  const fgB = fg.fg_buckets || [];
+  const vxB = fg.vix_buckets || [];
+  const sweet = fgB.find((b) => b.label === 'extreme fear');
+  const vSweet = vxB.find((b) => b.lo === 20);
+
+  body.innerHTML = `
+    <div class="guide">
+      <p><b>공포가 극심할수록 매수 신호의 성과가 좋다.</b>
+      CNN Fear & Greed 가 extreme fear 였던 날은 SPY 21거래일 후
+      평균 <b>${sweet ? pct(sweet.avg_21d_pct, 2) : '—'}</b>,
+      승률 <b>${sweet ? sweet.win_pct : '—'}%</b> 였다
+      (n=${sweet ? sweet.n : '—'}, 최근 1년).</p>
+      <p>10년 검증도 같은 방향이다. VIX 가 52주 고점 대비
+      <b>20~30%</b> 구간(=극심한 공포)이었을 때 SPY 21거래일 수익률은
+      <b>${vSweet ? pct(vSweet.avg_21d_pct, 2) : '—'}</b>,
+      승률 <b>${vSweet ? vSweet.win_pct : '—'}%</b> (n=${vSweet ? vSweet.n : '—'}).</p>
+      <div class="warnp"><b>단, 공포지수는 매수 신호 판정에 쓰지 않는다.</b>
+      지금 규칙(저점+10% · RSI≤50 · 국면)과 독립적인 참고 지표다.
+      또 CNN 은 <b>252일(1년)치만</b> 제공하므로 10년 검증은
+      VIX 52주 고점 대비 비율로 재구성했다. VIX 비율은 '변동성의 위치',
+      Fear &amp; Greed 는 '심리지수' 라서 <b>서로 사실상 무관</b>하다
+      (상관계수 +0.01).</div>
+    </div>`;
+
+  const rows = [];
+  for (const b of fgB) {
+    const g = fgGrade(b.label);
+    rows.push(`<tr>
+      <td class="c rg-${g}">${esc(b.label)}</td>
+      <td class="mute">${esc(b.rating_ko || '')}</td>
+      <td>${b.n}</td>
+      <td>${num(b.avg_signals, 1)}개</td>
+      <td class="${cls2(b.avg_21d_pct)}">${pct(b.avg_21d_pct, 2)}</td>
+      <td>${b.win_pct}%</td>
+    </tr>`);
+  }
+  for (const b of vxB) {
+    rows.push(`<tr style="border-top:2px solid var(--line)">
+      <td class="c mute">VIX ${esc(b.label)}</td>
+      <td class="mute">10년 검증</td>
+      <td>${b.n}</td>
+      <td class="mute">—</td>
+      <td class="${cls2(b.avg_21d_pct)}">${pct(b.avg_21d_pct, 2)}</td>
+      <td>${b.win_pct}%</td>
+    </tr>`);
+  }
+  table.innerHTML = `
+    <thead><tr><th>구간</th><th>근거</th><th>일수</th><th>평균신호수</th>
+    <th>SPY 21일</th><th>승률</th></tr></thead>
+    <tbody>${rows.join('')}</tbody>`;
+}
+
 function cls2(v) {
   if (v === null || v === undefined) return '';
   return v >= 0 ? 'pos' : 'neg';
@@ -733,6 +919,9 @@ function renderVerify() {
     $('rg-table').innerHTML = '';
   }
 
+  // ── 공포지수 ↔ 매수 신호 관계 ──
+  renderFearGreedVerify();
+
   const reasonRows = bear.trade_stats.reasons || {};
   $('bt-reasons').innerHTML = `
     <thead><tr><th>청산 사유</th><th>거래</th><th>평균</th><th>승률</th></tr></thead>
@@ -896,6 +1085,33 @@ function renderGuide() {
       첫 상장 폭락 뒤 이미 저점에서 많이 회복돼 있어서, "저점 +10% 이내" 를
       만족하지 않는 경우가 많다. 신호가 뜨는 신규 ETF 는 예외적으로
       저점 근처에 있다는 뜻이다.</div>
+    </div>`;
+
+  // 공포지수 설명
+  const fgv = state.fearGreed;
+  const fgSweet = fgv?.fg_buckets?.find((x) => x.label === 'extreme fear');
+  const vSweet = fgv?.vix_buckets?.find((x) => x.lo === 20);
+  $('g-fg').innerHTML = `
+    <div class="guide">
+      <h4>CNN Fear & Greed Index (미국 기준)</h4>
+      <p>0~100 점수와 5개 등급(극심한 공포 · 공포 · 중립 · 탐욕 · 극심한 탐욕)이다.
+      8개 구성요소(S&P500 모멘텀 · 주가 강도 · 시장 폭 · 풋/콜 비율 · VIX 변동성 ·
+      저등급채 수요 · 안전자산 수요)를 합산해 만든다.
+      카드는 매수 타이밍 탭 맨 위에 있다.</p>
+      <h4>공포가 극심할수록 매수 신호 성과가 좋다</h4>
+      <ul>
+        <li>Fear &amp; Greed 가 extreme fear 였던 날: SPY 21거래일 후
+        평균 <b>${fgSweet ? pct(fgSweet.avg_21d_pct, 2) : '—'}</b>,
+        승률 <b>${fgSweet ? fgSweet.win_pct : '—'}%</b> (n=${fgSweet ? fgSweet.n : '—'}, 최근 1년)</li>
+        <li>10년 검증 (VIX 52주 고점 대비 20~30% 구간):
+        평균 <b>${vSweet ? pct(vSweet.avg_21d_pct, 2) : '—'}</b>,
+        승률 <b>${vSweet ? vSweet.win_pct : '—'}%</b> (n=${vSweet ? vSweet.n : '—'})</li>
+      </ul>
+      <div class="warnp"><b>단, 매수 신호 판정에는 쓰지 않는다.</b>
+      지금 규칙(저점+10% · RSI≤50 · 국면)과 독립적인 참고 지표로만 쓴다.
+      또 CNN 은 <b>252일(1년)치만</b> 제공하므로 10년 검증은 VIX 로 재구성했다.
+      VIX 비율('변동성의 위치')과 Fear &amp; Greed 점수('심리지수')는
+      <b>사실상 무관</b>하다(상관계수 +0.01). 같은 숫자를 다른 각도로 보는 게 아니다.</div>
     </div>`;
 
   const b = d.benchmark || {};

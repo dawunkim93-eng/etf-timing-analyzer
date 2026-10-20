@@ -614,6 +614,15 @@ def main() -> None:
     except Exception as exc:  # noqa: BLE001
         print(f"  ! 낙폭 분석 실패 (기존 백테스트 결과는 정상): {exc}")
 
+    # 공포지수 분석 — CNN Fear & Greed / VIX 와 매수 신호의 관계
+    try:
+        from fear_greed_analysis import main as fg_main
+
+        print("\n  공포지수 분석…")
+        fg_main()
+    except Exception as exc:  # noqa: BLE001
+        print(f"  ! 공포지수 분석 실패 (나머지 결과는 정상): {exc}")
+
 
 if __name__ == "__main__":
     main()

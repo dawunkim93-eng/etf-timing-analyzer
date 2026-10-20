@@ -20,6 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from universe import (  # noqa: E402
     BARS_FOR_52W,
     DEPTH_SWEET_SPOT,
+    FG_HISTORY_DAYS,
+    FG_RATINGS,
     MARKETS,
     MIN_BARS_NEW,
     MIN_BARS_STD,
@@ -41,6 +43,7 @@ STALE_HOURS = 12
 
 errors: list[str] = []
 warnings: list[str] = []
+data_cache: dict = {}
 
 
 def err(msg: str) -> None:
@@ -77,6 +80,7 @@ def validate_market(market: str) -> None:
     except Exception as exc:  # noqa: BLE001
         err(f"{path.name}: JSON 파싱 실패 ({exc})")
         return
+    data_cache[market] = data
 
     where = path.name
 
@@ -263,6 +267,46 @@ def main() -> None:
     print("데이터 무결성 검사")
     for market in ("us", "kr"):
         validate_market(market)
+
+    # Fear & Greed — 외부 API 의존이라 실패해도 검증 실패로 만들지 않는다.
+    for market in ("us", "kr"):
+        fg = (data_cache.get(market) or {}).get("fear_greed")
+        if not fg:
+            warn(f"{market.upper()}: fear_greed 데이터 없음 — 카드 미표시")
+            continue
+        score = fg.get("score")
+        if not isinstance(score, (int, float)) or not (0 <= score <= 100):
+            err(f"{market.upper()}: fear_greed.score={score!r} — 0~100 이어야 함")
+        valid_ratings = {r for r, _ in FG_RATINGS}
+        if fg.get("rating") not in valid_ratings:
+            err(f"{market.upper()}: fear_greed.rating={fg.get('rating')!r} — {valid_ratings} 중 하나")
+        hist = fg.get("history") or []
+        if len(hist) > FG_HISTORY_DAYS:
+            err(f"{market.upper()}: fear_greed.history {len(hist)}일 — {FG_HISTORY_DAYS}일 초과")
+        days = [h.get("d") for h in hist]
+        if len(set(days)) != len(days):
+            err(f"{market.upper()}: fear_greed.history 에 중복 날짜")
+        for h in hist:
+            v = h.get("y")
+            if not isinstance(v, (int, float)) or not (0 <= v <= 100):
+                err(f"{market.upper()}: fear_greed.history 값 이상 ({v!r})")
+                break
+        comps = fg.get("components") or []
+        if len(comps) != 8:
+            warn(f"{market.upper()}: fear_greed 구성요소 {len(comps)}개 (보통 8개)")
+        for c in comps:
+            v = c.get("score")
+            if not isinstance(v, (int, float)) or not (0 <= v <= 100):
+                err(f"{market.upper()}: 구성요소 {c.get('label')} 점수 이상 ({v!r})")
+                break
+        vix = (data_cache.get(market) or {}).get("vix")
+        if vix:
+            cur = vix.get("current")
+            if not isinstance(cur, (int, float)) or cur < 0:
+                err(f"{market.upper()}: vix.current 이상 ({cur!r})")
+            r = vix.get("ratio_52w")
+            if r is not None and not (0 <= r <= 200):
+                err(f"{market.upper()}: vix.ratio_52w 범위 밖 ({r!r})")
 
     # history
     hist_path = DATA_DIR / "history.json"

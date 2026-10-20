@@ -210,3 +210,42 @@ body.dark .metric .k.sub{color:var(--ink3)}
 .sig-warn{margin-top:7px;padding:6px 9px;background:var(--sell-bg);color:var(--sell-ink);
   border-radius:8px;font-size:.72rem;line-height:1.5}
 body.dark .sig-warn{background:#332a14;color:#e0c47c}
+
+/* ---------- Fear & Greed 카드 ---------- */
+.fg-card .card-b{padding-top:10px}
+.fg-head{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.fg-score{font-size:2.6rem;font-weight:800;letter-spacing:-.04em;line-height:1}
+.fg-label{font-size:.86rem;font-weight:700;margin-top:4px}
+.fg-label small{display:block;font-size:.68rem;color:var(--ink3);font-weight:500;margin-top:2px}
+
+/* 0~100 게이지 */
+.fg-gauge{position:relative;height:12px;border-radius:6px;overflow:hidden;
+  background:linear-gradient(90deg,#c0392b 0%,#e67e22 25%,#f1c40f 45%,#8fbf6b 65%,#2e8b57 100%);
+  margin:6px 0 4px}
+.fg-marker{position:absolute;top:-4px;width:4px;height:20px;background:var(--ink);
+  border-radius:2px;box-shadow:0 0 0 2px var(--card);transform:translateX(-50%)}
+.fg-scale{display:flex;justify-content:space-between;font-size:.62rem;color:var(--ink3);margin-bottom:12px}
+
+.fg-prev{display:flex;gap:12px;flex-wrap:wrap;font-size:.74rem;color:var(--ink2);margin-bottom:12px}
+.fg-prev b{font-weight:700}
+.fg-prev .up{color:var(--pos)}
+.fg-prev .down{color:var(--neg)}
+
+/* 등급 색 */
+.rg-ef{color:#c0392b} .rg-f{color:#e67e22} .rg-n{color:#8a8a84} .rg-g{color:#2e8b57} .rg-eg{color:#1e6b45}
+.bg-ef{background:#c0392b} .bg-f{background:#e67e22} .bg-n{background:#b8b8b2} .bg-g{background:#2e8b57} .bg-eg{background:#1e6b45}
+
+/* 구성요소 */
+.fg-comps{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:4px}
+@media (max-width:380px){.fg-comps{grid-template-columns:1fr}}
+.fg-comp{background:var(--bg);border-radius:10px;padding:8px 10px}
+body.dark .fg-comp{background:#202124}
+.fg-comp-t{display:flex;justify-content:space-between;align-items:baseline;gap:6px;margin-bottom:5px}
+.fg-comp-n{font-size:.74rem;font-weight:600;color:var(--ink2)}
+.fg-comp-v{font-size:.78rem;font-weight:800}
+.fg-comp-bar{height:5px;border-radius:3px;background:var(--none-bg);overflow:hidden}
+.fg-comp-fill{height:100%;border-radius:3px}
+.fg-comp-r{font-size:.62rem;color:var(--ink3);margin-top:3px;display:block}
+
+.fg-spark{height:52px;margin:4px 0 10px}
+.fg-note{font-size:.72rem;color:var(--ink3);line-height:1.55;margin-top:10px}
