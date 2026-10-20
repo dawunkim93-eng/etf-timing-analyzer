@@ -482,6 +482,25 @@ def main() -> None:
     OUT.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(f"  → {OUT.relative_to(ROOT)}")
 
+    # 낙폭 축 분석 — 같은 일봉 캐시로 같이 계산한다 (추가 수집 없음)
+    try:
+        from depth_analysis import build_depth_analysis
+
+        depth = build_depth_analysis(prep, bench)
+        depth_out = DATA_DIR / "depth.json"
+        depth_out.write_text(
+            json.dumps(depth, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+        )
+        print(f"  → {depth_out.relative_to(ROOT)}")
+        for b in depth["buckets"]:
+            mark = " ★" if b["sweet_spot"] else (" !" if b["low_sample"] else "")
+            print(
+                f"    {b['label']:>10s} n={b['n']:6d} 평균 {b['avg_pct']:+7.2f}% "
+                f"승률 {b['win_pct']:5.1f}% 알파 {(b['alpha_pct'] or 0):+6.2f}{mark}"
+            )
+    except Exception as exc:  # noqa: BLE001
+        print(f"  ! 낙폭 분석 실패 (기존 백테스트 결과는 정상): {exc}")
+
 
 if __name__ == "__main__":
     main()

@@ -13,6 +13,7 @@ on:
       - "data/etf_us.json"
       - "data/etf_kr.json"
       - "data/backtest.json"
+      - "data/depth.json"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 

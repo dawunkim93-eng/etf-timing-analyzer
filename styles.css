@@ -165,3 +165,37 @@ body.dark .guide code{background:#202124}
 .guide .em{color:var(--ink);font-weight:700}
 .guide .warnp{background:var(--warn-bg);border-left:3px solid var(--warn-line);padding:9px 11px;border-radius:8px;margin:9px 0;font-size:.8rem;color:var(--warn-ink);line-height:1.6;word-break:keep-all}
 body.dark .guide .warnp{background:#2e2413;border-color:#5c4a1f;color:#f2c96b}
+
+/* ---------- 낙폭 배지 ---------- */
+.tag.depth{background:var(--none-bg);color:var(--none-ink)}
+.tag.depth.sweet{background:var(--buy-bg);color:var(--buy-ink)}
+.tag.depth.crash{background:var(--sell-bg);color:var(--sell-ink)}
+
+/* 매수 카드의 4칸 지표 그리드 (낙폭 추가) */
+.sig-metrics.four{grid-template-columns:repeat(4,1fr)}
+@media (max-width:400px){
+  .sig-metrics.four{grid-template-columns:repeat(2,1fr)}
+}
+
+/* ---------- 검증 탭 · 버킷 강조 ---------- */
+tr.sweet td{background:var(--buy-bg)}
+tr.sweet td.c{color:var(--buy-ink)}
+tr.lowsample td.c::after{content:" 저수표";font-size:.62rem;color:var(--neg);font-weight:700}
+tr.crashrow td.c::after{content:" 폭락";font-size:.62rem;color:var(--warn-ink);font-weight:700}
+.bucket-note{font-size:.72rem;color:var(--ink3);margin-top:6px}
+.legend{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;font-size:.74rem;color:var(--ink2)}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{width:10px;height:10px;border-radius:3px;display:inline-block;font-style:normal}
+.lg-sweet{background:var(--buy-ink)}
+.lg-crash{background:var(--sell-ink)}
+.lg-low{background:var(--neg)}
+
+/* 연도별 매트릭스 */
+.matrix{width:100%;border-collapse:collapse;font-size:.72rem;min-width:560px}
+.matrix th,.matrix td{padding:5px 4px;text-align:center;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums;white-space:nowrap}
+.matrix th:first-child,.matrix td:first-child{text-align:left;font-weight:700}
+.matrix thead th{color:var(--ink3);font-size:.66rem}
+.matrix td.pos{background:rgba(76,143,58,.13);color:var(--pos)}
+.matrix td.neg{background:rgba(196,71,46,.13);color:var(--neg)}
+.matrix td.none{color:var(--ink3)}
+.matrix td.thin{opacity:.55}

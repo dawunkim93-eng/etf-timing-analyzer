@@ -21,6 +21,25 @@ STOP_LOSS = 0.15
 MAX_HOLD_DAYS = 63
 ```
 
+**낙폭 버킷** (`universe.py` 의 `DEPTH_BUCKETS`) — 52주 고점 대비 낙폭 구간.
+버킷 경계는 검증 결과(10년 백테스트)에 맞춰 정했다. 곡점은 30~35% 다.
+
+```python
+DEPTH_BUCKETS = [
+    ("15% 미만",   0.0,  -15.0),
+    ("15~20%",   -15.0, -20.0),
+    ...
+    ("40%+",     -40.0, -100.0),
+]
+DEPTH_SWEET_SPOT = "30~35%"
+DEPTH_LOW_SAMPLE = 500
+```
+
+여기서 버킷을 고치면:
+1. `fetch_etf.py` 의 `signal.depth_label` 이 바뀐다
+2. `depth_analysis.py` 의 버킷별 성과가 다시 계산된다
+3. `validate_data.py` 가 `depth_label` ↔ `from_high_pct` 일치를 검사한다
+
 여기를 바꾸면:
 1. `scripts/fetch_etf.py` 의 신호 판정이 따라 바뀐다
 2. `scripts/backtest.py` 도 같은 값을 import 하므로 검증 결과가 따라 바뀐다
@@ -49,6 +68,15 @@ MAX_HOLD_DAYS = 63
 
 6. **백테스트 캐시(8MB)는 커밋하지 않는다.** `.gitignore` 에 있음.
 
+7. **표본이 적은 구간을 지우지 않는다.**
+   `depth_analysis.py` 는 n < 500 구간도 그대로 `data/depth.json` 에 쓴다.
+   화면에 "저수표"로 표시해 사용자가 판단하게 하는 게 목적이다.
+   표본을 걸러내면 편향이 숨겨진다.
+
+8. **전반/후반 분할 기준은 고정 캘린저 날짜다.**
+   신호일 중위로 나누면 표본 밀도(2022년 bear market)에 따라 자르게 된다.
+   `depth_analysis.py` 의 `split_pivot` 는 전체 신호 구간의 캘린더 중위.
+
 ## 코드 관례
 
 - 주석과 설명서는 **한국어**. 왜(why)를 쓴다.
@@ -62,7 +90,7 @@ MAX_HOLD_DAYS = 63
 ```bash
 python scripts/fetch_etf.py all
 python scripts/validate_data.py
-python scripts/backtest.py --refresh
+python scripts/backtest.py --refresh   # 백테스트 + 낙폭 분석을 함께 돌린다
 ```
 
 `validate_data.py` 가 실패하면 배포하지 않는다. 신호 플래그가 원시값과

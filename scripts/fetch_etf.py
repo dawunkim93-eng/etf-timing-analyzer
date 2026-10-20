@@ -32,12 +32,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from universe import (  # noqa: E402
     BEAR_LOOKBACK,
     BARS_FOR_52W,
+    DEPTH_SWEET_SPOT,
     MA_LONG,
     MA_SHORT,
     MARKETS,
     RSI_PERIOD,
     SIGNAL_LOW_FROM_52W,
     SIGNAL_RSI_MAX,
+    depth_bucket,
     yahoo_ticker,
 )
 
@@ -280,11 +282,15 @@ def apply_signal(etf: dict, regime: str | None) -> dict:
         and low_pct <= SIGNAL_LOW_FROM_52W
         and rsi <= SIGNAL_RSI_MAX
     )
+    bucket = depth_bucket(etf.get("from_high_pct"))
     etf["signal"] = {
         "raw_pass": bool(raw),
         "regime_pass": bool(raw and regime == "bear"),
         "distance_to_low_pct": rnd(low_pct) if low_pct is not None else None,
         "rsi_gap": rnd(SIGNAL_RSI_MAX - rsi) if rsi is not None else None,
+        # 52주 고점 대비 낙폭 버킷 — 순위 재배치가 아니라 정보 표기용
+        "depth_label": bucket,
+        "depth_sweet_spot": bucket == DEPTH_SWEET_SPOT,
     }
     return etf
 

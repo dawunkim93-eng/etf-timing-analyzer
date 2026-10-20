@@ -17,7 +17,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from universe import MARKETS, SIGNAL_LOW_FROM_52W, SIGNAL_RSI_MAX  # noqa: E402
+from universe import (  # noqa: E402
+    DEPTH_SWEET_SPOT,
+    MARKETS,
+    SIGNAL_LOW_FROM_52W,
+    SIGNAL_RSI_MAX,
+    depth_bucket,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
@@ -153,6 +159,14 @@ def validate_market(market: str) -> None:
         expect_reg = expect_raw and data.get("regime") == "bear"
         if sig.get("regime_pass") != expect_reg:
             err(f"{w}: signal.regime_pass={sig.get('regime_pass')} 인데 계산값은 {expect_reg}")
+
+        # 낙폭 버킷 — from_high_pct 와 일치해야 한다
+        expect_bucket = depth_bucket(e.get("from_high_pct"))
+        if sig.get("depth_label") != expect_bucket:
+            err(f"{w}: signal.depth_label={sig.get('depth_label')!r} 인데 "
+                f"계산값은 {expect_bucket!r} (고점대비 {e.get('from_high_pct')}%)")
+        if sig.get("depth_sweet_spot") != (expect_bucket == DEPTH_SWEET_SPOT):
+            err(f"{w}: signal.depth_sweet_spot 불일치")
 
         # 스파크라인 길이
         spark = e.get("spark")

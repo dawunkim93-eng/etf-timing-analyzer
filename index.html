@@ -64,10 +64,18 @@
   </div>
 
   <div class="card">
-    <div class="card-h">조건 만족 종목 없음</div>
-    <div class="card-b" id="empty-note" style="display:none">
-      지금은 두 조건을 동시에 만족하는 종목이 없습니다. 국면이 바뀌거나
-      종목이 52주 저점에서 더 내려갈 때까지 기다리는 구간입니다.
+    <div class="card-h">낙폭 필터</div>
+    <div class="card-b">
+      <div class="row">
+        <select id="f-depth">
+          <option value="">낙폭 전체 보기</option>
+        </select>
+      </div>
+      <div class="note" id="depth-note">
+        52주 고점 대비 얼마나 떨어져 있는지로 매수 후보를 좁힙니다.
+        10년 백테스트에서 30~35% 구간의 성과가 가장 좋았지만(평균 +7.4%, 승률 67.6%),
+        표본이 821행뿐이라 확정된 사실은 아닙니다. <b>검증</b> 탭에서 연도별 내역을 확인하세요.
+      </div>
     </div>
   </div>
 </section>
@@ -123,6 +131,8 @@
           <option value="low52">저점대비 높은순</option>
           <option value="ret12">1년 수익률</option>
           <option value="ma200">200일선 이격</option>
+          <option value="depth">낙폭 깊은순 (고점 대비)</option>
+          <option value="depth_shallow">낙폭 얕은순 (고점 대비)</option>
         </select>
       </div>
       <div class="row">
@@ -133,6 +143,11 @@
           <option value="none">미충족</option>
         </select>
         <span class="count" id="all-count"></span>
+      </div>
+      <div class="row">
+        <select id="f-depth-all">
+          <option value="">낙폭 전체</option>
+        </select>
       </div>
     </div>
   </div>
@@ -161,6 +176,37 @@
   </div>
 
   <div class="card">
+    <div class="card-h">낙폭별 성과 · 52주 고점 대비</div>
+    <div class="card-b" id="depth-summary"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h">낙폭 구간별 상세</div>
+    <div class="card-b table-wrap"><table id="depth-table"></table></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h">연도별 알파 · 표본 편향 확인</div>
+    <div class="card-b table-wrap"><table id="depth-yearly"></table></div>
+    <div class="note" id="depth-yearly-note"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h">낙폭을 상한선 필터로 쓰면</div>
+    <div class="card-b table-wrap"><table id="depth-caps"></table></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h">낙폭 순위로 뽑으면 (상위 N개)</div>
+    <div class="card-b table-wrap"><table id="depth-rank"></table></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h">낙폭 축의 한계</div>
+    <div class="card-b" id="depth-notes"></div>
+  </div>
+
+  <div class="card">
     <div class="card-h">측정 방법과 한계</div>
     <div class="card-b" id="bt-notes"></div>
   </div>
@@ -177,15 +223,19 @@
     <div class="card-b" id="g-sell"></div>
   </div>
   <div class="card">
-    <div class="card-h">3 · 시장 국면</div>
+    <div class="card-h">3 · 낙폭 (52주 고점 대비)</div>
+    <div class="card-b" id="g-depth"></div>
+  </div>
+  <div class="card">
+    <div class="card-h">4 · 시장 국면</div>
     <div class="card-b" id="g-regime"></div>
   </div>
   <div class="card">
-    <div class="card-h">4 · 지표 계산 방법</div>
+    <div class="card-h">5 · 지표 계산 방법</div>
     <div class="card-b" id="g-calc"></div>
   </div>
   <div class="card">
-    <div class="card-h">5 · 한계</div>
+    <div class="card-h">6 · 한계</div>
     <div class="card-b" id="g-limits"></div>
   </div>
   <div class="card alert-card">

@@ -8,10 +8,23 @@ const state = {
   market: 'us',
   data: null,
   backtest: null,
+  depth: null,
   exitRsi: 60,
   stopPct: 15,
-  filters: { cat: '', sort: 'signal', state: '' },
+  filters: { cat: '', sort: 'signal', state: '', depth: '', depthAll: '' },
 };
+
+/* 낙폭 버킷 라벨 — universe.py 의 DEPTH_BUCKETS 와 같은 순서 */
+const DEPTH_ORDER = ['15% 미만', '15~20%', '20~25%', '25~30%', '30~35%', '35~40%', '40%+'];
+const DEPTH_SWEET = '30~35%';
+const DEPTH_CRASH = '40%+';
+
+/* 버킷 라벨 → CSS 클래스 (곡점 강조, 폭락 경고) */
+function depthCls(label) {
+  if (label === DEPTH_SWEET) return 'sweet';
+  if (label === DEPTH_CRASH) return 'crash';
+  return '';
+}
 
 const MARKETS = {
   us: { label: '🇺🇸 미국', file: 'data/etf_us.json', other: 'kr', otherLabel: '🇰🇷 한국' },
@@ -85,7 +98,16 @@ async function loadBacktest() {
   } catch {
     state.backtest = null;
   }
+  try {
+    const res = await fetch('data/depth.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error('없음');
+    state.depth = await res.json();
+  } catch {
+    state.depth = null;
+  }
   renderVerify();
+  // 낙폭 설명은 depth.json 이 로드된 뒤에 채워진다
+  if (state.data) renderGuide();
 }
 
 /* ------------------------------------------------------------------ 렌더 */
@@ -139,8 +161,10 @@ function render() {
 /* ---------------- 매수 ---------------- */
 function renderBuy(etfs) {
   const regime = state.data.regime;
-  const regimeList = etfs.filter((e) => e.signal.regime_pass);
-  const rawOnly = etfs.filter((e) => e.signal.raw_pass && !e.signal.regime_pass);
+  const depthFilter = state.filters.depth;
+  const match = (e) => !depthFilter || e.signal?.depth_label === depthFilter;
+  const regimeList = etfs.filter((e) => e.signal.regime_pass && match(e));
+  const rawOnly = etfs.filter((e) => e.signal.raw_pass && !e.signal.regime_pass && match(e));
 
   $('regime-list').innerHTML = regimeList.length
     ? regimeList.map((e) => signalCard(e, true)).join('')
@@ -160,9 +184,11 @@ function signalCard(e, isRegime) {
   const lowOk = e.from_low_pct !== null && e.from_low_pct <= 10;
   const rsiOk = e.rsi !== null && e.rsi <= 50;
   const maDist = e.ma200_dist_pct;
+  const depthLabel = e.signal?.depth_label || '';
   const tags = [
     `<span class="tag cat">${esc(e.category)}</span>`,
     `<span class="tag theme">${esc(e.theme)}</span>`,
+    depthLabel ? `<span class="tag depth ${depthCls(depthLabel)}">고점 대비 ${esc(depthLabel)}</span>` : '',
   ];
   if (isRegime) tags.push('<span class="tag star">★ 약세 필터</span>');
   else tags.push('<span class="tag warn">원조건만</span>');
@@ -173,7 +199,7 @@ function signalCard(e, isRegime) {
       <span class="sig-name">${esc(e.name)}</span>
     </div>
     <div class="sig-tags" style="margin-top:6px">${tags.join('')}</div>
-    <div class="sig-metrics">
+    <div class="sig-metrics four">
       <div class="metric">
         <div class="k">52주 저점 대비</div>
         <div class="v ${lowOk ? 'pass' : 'fail'}">${pct(e.from_low_pct)}</div>
@@ -181,6 +207,10 @@ function signalCard(e, isRegime) {
       <div class="metric">
         <div class="k">RSI(14)</div>
         <div class="v ${rsiOk ? 'pass' : 'fail'}">${num(e.rsi, 1)}</div>
+      </div>
+      <div class="metric">
+        <div class="k">고점 대비</div>
+        <div class="v ${e.from_high_pct <= -30 ? 'pass' : ''}">${pct(e.from_high_pct)}</div>
       </div>
       <div class="metric">
         <div class="k">200일선 이격</div>
@@ -276,6 +306,30 @@ function renderAll(etfs) {
       catSel.appendChild(o);
     }
   }
+  // 낙폭 버킷 셀렉트 — 시장이 바뀌면 개수가 달라지니 매번 다시 만든다
+  for (const sel of [$('f-depth'), $('f-depth-all')]) {
+    if (!sel) continue;
+    const prev = sel.value;
+    sel.innerHTML = '';
+    const first = document.createElement('option');
+    first.value = '';
+    first.textContent = sel.id === 'f-depth' ? '낙폭 전체 보기' : '낙폭 전체';
+    sel.appendChild(first);
+    for (const label of DEPTH_ORDER) {
+      const count = etfs.filter((e) => e.signal?.depth_label === label).length;
+      if (!count) continue;
+      const o = document.createElement('option');
+      o.value = label;
+      o.textContent = `고점 대비 ${label} (${count})`;
+      sel.appendChild(o);
+    }
+    // 시장 전환 전 선택을 되돌린다 (그 버킷이 없으면 해제)
+    if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
+    else if (prev) {
+      state.filters.depth = '';
+      state.filters.depthAll = '';
+    }
+  }
 
   const f = state.filters;
   let rows = etfs.filter((e) => {
@@ -283,6 +337,7 @@ function renderAll(etfs) {
     if (f.state === 'regime' && !e.signal.regime_pass) return false;
     if (f.state === 'raw' && !e.signal.raw_pass) return false;
     if (f.state === 'none' && e.signal.raw_pass) return false;
+    if (f.depthAll && e.signal?.depth_label !== f.depthAll) return false;
     return true;
   });
 
@@ -293,6 +348,8 @@ function renderAll(etfs) {
     low52: (e) => -(e.from_low_pct ?? -999),
     ret12: (e) => -(e.ret_12m ?? -999),
     ma200: (e) => -(e.ma200_dist_pct ?? -999),
+    depth: (e) => e.from_high_pct ?? 999,
+    depth_shallow: (e) => -(e.from_high_pct ?? -999),
   }[f.sort];
   rows = rows.slice().sort((a, b) => key(a) - key(b));
 
@@ -300,7 +357,7 @@ function renderAll(etfs) {
   $('all-table').innerHTML = `
     <thead><tr>
       <th>종목</th><th>카테고리</th><th>현재가</th><th>저점대비</th><th>RSI</th>
-      <th>200일선</th><th>1년</th><th>상태</th>
+      <th>고점대비</th><th>200일선</th><th>1년</th><th>상태</th>
     </tr></thead>
     <tbody>${rows
       .map(
@@ -310,6 +367,7 @@ function renderAll(etfs) {
       <td>${fmtPrice(e.price, state.data.currency_label)}</td>
       <td class="${e.from_low_pct <= 10 ? 'pos' : ''}">${pct(e.from_low_pct)}</td>
       <td class="${e.rsi <= 50 ? 'pos' : ''}">${num(e.rsi, 1)}</td>
+      <td class="${e.from_high_pct <= -30 ? 'pos' : ''}">${pct(e.from_high_pct)}</td>
       <td class="${cls(e.ma200_dist_pct)}">${pct(e.ma200_dist_pct)}</td>
       <td class="${cls(e.ret_12m)}">${pct(e.ret_12m)}</td>
       <td>${
@@ -322,6 +380,145 @@ function renderAll(etfs) {
     </tr>`
       )
       .join('')}</tbody>`;
+}
+
+/* ---------------- 검증 · 낙폭 ---------------- */
+function renderDepth() {
+  const d = state.depth;
+  const sum = $('depth-summary');
+  if (!d) {
+    sum.innerHTML =
+      '<div class="empty">낙폭 분석 결과가 없습니다. scripts/backtest.py 를 실행해 data/depth.json 을 생성하세요.</div>';
+    return;
+  }
+
+  const uf = d.unfiltered;
+  const best = d.buckets.find((b) => b.sweet_spot);
+
+  sum.innerHTML = `
+    <div class="guide">
+      <p>기존 매수 신호(<code>저점+10% 이내 AND RSI ≤ ${d.rules.rsi_max}</code>) 안에서,
+      52주 고점 대비 낙폭에 따라 <b>${d.hold_days}일 후</b> 성과가 어떻게 달라지는지 나눈 것입니다.</p>
+      <p>전체 신호 <b>${uf.n.toLocaleString()}건</b>의 평균은 <b>${pct(uf.avg_pct, 2)}</b>,
+      승률 ${uf.win_pct}%, 알파 ${pct(uf.alpha_pct, 2)} 입니다.
+      낙폭이 깊어질수록 대체로 좋아지지만 <b>단조 증가가 아니라 봉우리</b>입니다.</p>
+      ${
+        best
+          ? `<div class="warnp"><b>${best.label} 구간이 가장 좋았습니다</b> —
+             평균 ${pct(best.avg_pct, 2)}, 승률 ${best.win_pct}%, 알파 ${pct(best.alpha_pct, 2)}.
+             단, 표본이 <b>${best.n}행</b>뿐입니다. 연도별로는 크게 흔들리므로 아래 표를 반드시 보세요.</div>`
+          : ''
+      }
+    </div>`;
+
+  // 버킷별 상세
+  $('depth-table').innerHTML = `
+    <thead><tr><th>구간</th><th>n</th><th>평균</th><th>중앙</th><th>승률</th><th>알파</th>
+    <th>전반</th><th>후반</th><th>종목집중</th></tr></thead>
+    <tbody>${d.buckets
+      .map((b) => {
+        const cls = b.sweet_spot ? 'sweet' : b.label === DEPTH_CRASH ? 'crashrow' : '';
+        const half = b.half || {};
+        const conc = b.concentration || {};
+        return `<tr class="${cls}">
+        <td class="c">${esc(b.label)}</td>
+        <td>${b.n.toLocaleString()}</td>
+        <td class="${cls2(b.avg_pct)}">${pct(b.avg_pct, 2)}</td>
+        <td class="${cls2(b.median_pct)}">${pct(b.median_pct, 2)}</td>
+        <td>${b.win_pct}%</td>
+        <td class="${cls2(b.alpha_pct)}">${pct(b.alpha_pct, 2)}</td>
+        <td class="${cls2(half.early_alpha_pct)}">${pct(half.early_alpha_pct, 2)}</td>
+        <td class="${cls2(half.late_alpha_pct)}">${pct(half.late_alpha_pct, 2)}</td>
+        <td class="mute">${conc.unique_tickers}종목 / 상위5 ${conc.top5_share_pct}%</td>
+      </tr>`;
+      })
+      .join('')}</tbody>`;
+
+  // 연도별 매트릭스
+  const years = [...new Set(d.buckets.flatMap((b) => b.yearly.map((y) => y.year)))].sort();
+  $('depth-yearly').innerHTML = `
+    <thead><tr><th>구간</th>${years.map((y) => `<th>${y.slice(2)}</th>`).join('')}</tr></thead>
+    <tbody>${d.buckets
+      .map((b) => {
+        const byYear = Object.fromEntries(b.yearly.map((y) => [y.year, y]));
+        return `<tr class="${b.sweet_spot ? 'sweet' : ''}">
+        <td class="c">${esc(b.label)}</td>
+        ${years
+          .map((y) => {
+            const rec = byYear[y];
+            if (!rec) return '<td class="none">—</td>';
+            const thin = rec.n < 30 ? ' thin' : '';
+            return `<td class="${rec.alpha_pct >= 0 ? 'pos' : 'neg'}${thin}">${rec.alpha_pct > 0 ? '+' : ''}${rec.alpha_pct}</td>`;
+          })
+          .join('')}
+      </tr>`;
+      })
+      .join('')}</tbody>`;
+
+  $('depth-yearly-note').innerHTML =
+    '알파(%). 연도별 표본이 30건 미만인 칸은 흐리게 표시했습니다. ' +
+    `분할 기준 ${d.split_pivot} (전체 신호 구간의 캘린더 중위). ` +
+    '<b>전반과 후반 알파의 부호가 다르면 표본 편향을 의심해야 합니다.</b> ' +
+    '표본을 지우지 않고 전부 공개합니다.';
+
+  // 상한선 필터
+  $('depth-caps').innerHTML = `
+    <thead><tr><th>낙폭 상한</th><th>n</th><th>평균</th><th>중앙</th><th>승률</th><th>알파</th></tr></thead>
+    <tbody>
+      <tr><td class="c">제한 없음</td><td>${uf.n.toLocaleString()}</td>
+        <td class="${cls2(uf.avg_pct)}">${pct(uf.avg_pct, 2)}</td>
+        <td class="${cls2(uf.median_pct)}">${pct(uf.median_pct, 2)}</td>
+        <td>${uf.win_pct}%</td>
+        <td class="${cls2(uf.alpha_pct)}">${pct(uf.alpha_pct, 2)}</td></tr>
+      ${d.cap_filters
+        .map(
+          (c) => `<tr><td class="c">${c.cap}% 이내</td><td>${c.n.toLocaleString()}</td>
+        <td class="${cls2(c.avg_pct)}">${pct(c.avg_pct, 2)}</td>
+        <td class="${cls2(c.median_pct)}">${pct(c.median_pct, 2)}</td>
+        <td>${c.win_pct}%</td>
+        <td class="${cls2(c.alpha_pct)}">${pct(c.alpha_pct, 2)}</td></tr>`
+        )
+        .join('')}
+    </tbody>`;
+
+  // 순위축
+  $('depth-rank').innerHTML = `
+    <thead><tr><th>방식</th><th>n</th><th>평균</th><th>중앙</th><th>승률</th><th>알파</th></tr></thead>
+    <tbody>${d.rank_axis
+      .map(
+        (r) => `<tr>
+      <td class="c">낙폭순 상위 ${r.n_top}개</td><td>${r.depth_sorted.n.toLocaleString()}</td>
+      <td class="${cls2(r.depth_sorted.avg_pct)}">${pct(r.depth_sorted.avg_pct, 2)}</td>
+      <td class="${cls2(r.depth_sorted.median_pct)}">${pct(r.depth_sorted.median_pct, 2)}</td>
+      <td>${r.depth_sorted.win_pct}%</td>
+      <td class="${cls2(r.depth_sorted.alpha_pct)}">${pct(r.depth_sorted.alpha_pct, 2)}</td></tr>
+      <tr><td class="c mute">└ 무작위 ${r.n_top}개 (대조군)</td><td>${r.random.n.toLocaleString()}</td>
+      <td class="${cls2(r.random.avg_pct)}">${pct(r.random.avg_pct, 2)}</td>
+      <td class="${cls2(r.random.median_pct)}">${pct(r.random.median_pct, 2)}</td>
+      <td>${r.random.win_pct}%</td>
+      <td class="${cls2(r.random.alpha_pct)}">${pct(r.random.alpha_pct, 2)}</td></tr>`
+      )
+      .join('')}</tbody>`;
+
+  // 한계
+  const notes = (d.caveats || []).map((c) => `<li>${esc(c)}</li>`).join('');
+  $('depth-notes').innerHTML = `
+    <div class="guide">
+      <p>낙폭 축은 <b>매수 후보를 좁히는 데</b> 쓸 수 있습니다.
+      하지만 순위 재배치에 쓰면 알파가 여전히 음수입니다 — 상승장을 따라가지 못하는
+      근본 문제는 낙폭으로 고쳐지지 않습니다.</p>
+      <ul>${notes}</ul>
+      <div class="legend">
+        <span><i class="lg-sweet"></i> 곡점 구간</span>
+        <span><i class="lg-crash"></i> 폭락 구간 (밸류 트랩 위험)</span>
+        <span><i class="lg-low"></i> 저수표 (n &lt; 500)</span>
+      </div>
+    </div>`;
+}
+
+function cls2(v) {
+  if (v === null || v === undefined) return '';
+  return v >= 0 ? 'pos' : 'neg';
 }
 
 /* ---------------- 검증 ---------------- */
@@ -396,6 +593,8 @@ function renderVerify() {
       )
       .join('')}</tbody>`;
 
+  renderDepth();
+
   $('bt-notes').innerHTML = `
     <div class="guide">
       <h4>알파란 무엇인가</h4>
@@ -464,6 +663,39 @@ function renderGuide() {
       백테스트에서 "만료"로 끝난 거래는 평균 수익이 음수였습니다.</p>
     </div>`;
 
+  // 낙폭 설명
+  const dep = state.depth;
+  const sweet = dep?.buckets?.find((x) => x.sweet_spot);
+  $('g-depth').innerHTML = `
+    <div class="guide">
+      <h4>52주 고점 대비 얼마나 떨어져 있는가</h4>
+      <p>현재가가 최근 252거래일의 <span class="em">고점</span>에서 얼마나 내려와 있는지를
+      낙폭이라고 합니다. 낙폭이 크면 "많이 빠졌다", 작으면 "거의 고점"이라는 뜻입니다.</p>
+      <h4>왜 정보 축으로 쓰나</h4>
+      <p>10년 백테스트에서 낙폭이 클수록 63일 후 성과가 대체로 좋았습니다.
+      ${
+        sweet
+          ? `<br>특히 <span class="em">${esc(sweet.label)}</span> 구간이 가장 좋았지만
+             (평균 ${pct(sweet.avg_pct, 2)}, 승률 ${sweet.win_pct}%, 알파 ${pct(sweet.alpha_pct, 2)}),
+             표본이 ${sweet.n}행뿐이라 확정된 사실은 아닙니다.`
+          : ''
+      }</p>
+      <h4>단조 증가가 아니다</h4>
+      <p>40% 넘게 떨어진 구간은 오히려 성과가 나빠집니다. 구조적으로 망한 ETF 다수가
+      거기 들어갑니다. <span class="em">많이 떨어졌다고 좋은 매수처는 아닙니다.</span></p>
+      <h4>RSI 와 겹친다</h4>
+      <p>낙폭만 조건을 걸어도 그 안의 RSI 중앙값이 59.8 에서 42.9 로 내려갑니다.
+      즉 낙폭과 RSI 는 같은 방향을 보고 있고, <b>낙폭이 RSI 가 이미 잡은 것을 다시 잡는</b>
+      성격입니다. 그래서 매수 조건에 추가하지 않고 정보로만 씁니다.</p>
+      <h4>배지 색</h4>
+      <ul>
+        <li><span class="em">30~35%</span> — 곡점 구간 (초록)</li>
+        <li><span class="em">40%+</span> — 폭락 구간 (주황, 밸류 트랩 주의)</li>
+      </ul>
+      <div class="warnp">매수 타이밍 탭의 "낙폭 필터"로 원하는 구간만 골라 볼 수 있습니다.
+      다만 필터가 결과를 좋게 만드는 게 아니라, <b>높은 확신 구간만 골라 보는 도구</b>입니다.</div>
+    </div>`;
+
   const b = d.benchmark || {};
   $('g-regime').innerHTML = `
     <div class="guide">
@@ -511,6 +743,9 @@ function renderGuide() {
         <li><b>레버리지·인버스 ETF 는 제외</b>했습니다. 52주 저점 규칙이 의미가 없어집니다.</li>
         <li><b>한국 ETF 는 원화 기준</b>이라 환율이 빠져 있습니다. KODEX 200 은 지수와 거의 같지만
         다른 종목은 차이가 있습니다.</li>
+        <li><b>낙폭 축도 표본 편향이 있습니다.</b> 표본 821행짜리 구간의 연도별 성과가
+        2018 +6.6 → 2021 -18.9 → 2024 -5.7 로 흔들립니다.</li>
+        <li><b>낙폭은 RSI 와 독립 정보가 아닙니다.</b> 낙폭이 크면 RSI 도 자동으로 낮아집니다.</li>
         <li><b>_site 는 보유 여부를 모릅니다.</b> "보유 중"은 매수 신호가 난 종목을 가리키는 표시입니다.</li>
       </ul>
     </div>`;
@@ -550,6 +785,14 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('f-state').addEventListener('change', (e) => {
     state.filters.state = e.target.value;
+    renderAll(state.data.etfs);
+  });
+  $('f-depth').addEventListener('change', (e) => {
+    state.filters.depth = e.target.value;
+    renderBuy(state.data.etfs);
+  });
+  $('f-depth-all').addEventListener('change', (e) => {
+    state.filters.depthAll = e.target.value;
     renderAll(state.data.etfs);
   });
 
