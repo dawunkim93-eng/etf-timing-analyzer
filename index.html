@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#f7f7f5">
 <meta name="description" content="미국·한국 주요 ETF 타이밍 분석 — 52주 최저가 대비 10% 이내, RSI 50 이하 매수 신호와 익절·손절 타이밍">
 <title>ETF 타이밍 분석</title>
-<link rel="stylesheet" href="styles.css?v=bdd4c2d0">
+<link rel="stylesheet" href="styles.css?v=a4419a98">
 </head>
 <body>
 
@@ -35,28 +35,49 @@
   <span id="data-status">데이터 로딩 중…</span>
 </div>
 
-<!-- ================= 국면 배너 ================= -->
-<div class="card regime-card" id="regime-card">
-  <div class="card-h">현재 시장 국면</div>
-  <div class="card-b" id="regime-body">—</div>
-</div>
-
 <!-- ================= 탭 ================= -->
 <nav class="tabs">
   <button class="on" data-tab="buy">매수 타이밍</button>
   <button data-tab="sell">익절 타이밍</button>
+  <button data-tab="market">시장</button>
   <button data-tab="all">전체 목록</button>
   <button data-tab="verify">검증</button>
   <button data-tab="guide">설명서</button>
 </nav>
 
-<!-- ---------- 매수 ---------- -->
-<section class="tabpane on" id="tab-buy">
+<!-- ---------- 시장 (참고자료) ---------- -->
+<section class="tabpane" id="tab-market">
+  <div class="card regime-card" id="regime-card">
+    <div class="card-h">현재 시장 국면</div>
+    <div class="card-b" id="regime-body">—</div>
+  </div>
+
   <div class="card fg-card">
     <div class="card-h">시장 공포 · 탐욕</div>
     <div class="card-b" id="fg-body">
       <div class="empty">불러오는 중…</div>
     </div>
+  </div>
+
+  <div class="card">
+    <div class="card-h">벤치마크 지표</div>
+    <div class="card-b" id="bench-body"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-h">공포지수와 매수 신호의 관계</div>
+    <div class="card-b" id="fg-summary"></div>
+  </div>
+</section>
+
+<!-- ---------- 매수 ---------- -->
+<section class="tabpane on" id="tab-buy">
+  <div class="card market-summary" id="market-summary">
+    <button class="ms-row" id="ms-btn" type="button">
+      <span class="ms-badge" id="ms-badge">—</span>
+      <span class="ms-text" id="ms-text">시장 상황 확인 중…</span>
+      <span class="ms-go">시장 탭 ›</span>
+    </button>
   </div>
 
   <div class="card">
@@ -285,11 +306,12 @@
 <nav class="nav">
   <button class="on" data-tab="buy"><span>매수</span></button>
   <button data-tab="sell"><span>익절</span></button>
+  <button data-tab="market"><span>시장</span></button>
   <button data-tab="all"><span>전체</span></button>
   <button data-tab="verify"><span>검증</span></button>
   <button data-tab="guide"><span>설명서</span></button>
 </nav>
 
-<script src="app.js?v=6753a802"></script>
+<script src="app.js?v=53a6c032"></script>
 </body>
 </html>

@@ -124,8 +124,11 @@ async function loadBacktest() {
     state.fearGreed = null;
   }
   renderVerify();
-  // 낙폭 설명은 depth.json 이 로드된 뒤에 채워진다
-  if (state.data) renderGuide();
+  // 낙폭·공포지수 설명은 depth.json / feargreed.json 이 로드된 뒤에 채워진다
+  if (state.data) {
+    renderGuide();
+    renderFearGreedSummary();
+  }
 }
 
 /* ------------------------------------------------------------------ 렌더 */
@@ -186,11 +189,98 @@ function render() {
     rEl.innerHTML = '<div class="empty">벤치마크를 못 불러와 국면을 판정하지 못했습니다.</div>';
   }
 
+  renderMarketSummary();
   renderFearGreed();
+  renderBenchmark();
+  renderFearGreedSummary();
   renderBuy(etfs);
   renderSell(etfs);
   renderAll(etfs);
   renderGuide();
+}
+
+/* ---------------- 시장 맥락 요약 (매수 탭 상단 배지) ---------------- */
+function renderMarketSummary() {
+  const d = state.data;
+  if (!d) return;
+  const b = d.benchmark || {};
+  const isBear = d.regime === 'bear';
+  const badge = $('ms-badge');
+  const text = $('ms-text');
+  if (!badge || !text) return;
+  badge.textContent = isBear ? '약세 국면' : '상승 국면';
+  badge.className = 'ms-badge ' + (isBear ? 'bear' : 'bull');
+  const bits = [];
+  if (b.regime_since) bits.push(`${b.regime_since} 전환`);
+  if (b.regime_dd !== null && b.regime_dd !== undefined) {
+    bits.push(`고점 대비 ${pct(b.regime_dd)}`);
+  }
+  const fg = d.fear_greed;
+  if (fg) bits.push(`공포 ${num(fg.score, 0)}`);
+  text.textContent = bits.length ? bits.join(' · ') : '시장 상황 보기';
+}
+
+/* ---------------- 벤치마크 지표 ---------------- */
+function renderBenchmark() {
+  const d = state.data;
+  const el = $('bench-body');
+  if (!d || !el) return;
+  const b = d.benchmark || {};
+  if (!b.price) {
+    el.innerHTML = '<div class="empty">벤치마크를 불러오지 못했습니다.</div>';
+    return;
+  }
+  // 벤치마크 ETF 항목을 찾아 저점대비·200일선 이격·낙폭 버킷을 얻는다
+  const own = d.etfs.find((e) => e.code === b.ticker);
+
+  const item = (label, value, cls) =>
+    `<div class="bench-item">
+      <div class="bench-k">${esc(label)}</div>
+      <div class="bench-v ${cls || ''}">${value}</div>
+    </div>`;
+
+  const maDist = own ? own.ma200_dist_pct : null;
+  el.innerHTML = `
+    <div class="bench-grid">
+      ${item('현재가', fmtPrice(b.price, d.currency_label))}
+      ${item('1년 수익률', pct(b.ret_12m), cls(b.ret_12m))}
+      ${item('52주 고점 대비', pct(b.from_high_pct), cls(b.from_high_pct))}
+      ${item('52주 저점 대비', own ? pct(own.from_low_pct) : '—', own && own.from_low_pct <= 10 ? 'pos' : '')}
+      ${item('200일선', b.ma200_above ? '위' : '아래', b.ma200_above ? 'pos' : 'neg')}
+      ${item('200일선 이격', pct(maDist), cls(maDist))}
+      ${item('주봉 RSI(14주)', num(b.rsi, 1), b.rsi <= 50 ? 'pos' : '')}
+      ${item('낙폭 구간', own ? esc(own.signal.depth_label) : '—')}
+    </div>
+    <div class="fg-note">
+      ${esc(b.name || b.ticker)} · 국면 판정 기준 지수 ${esc(b.regime_index || '')} (${b.regime_index_bars || 0}봉).
+      주봉 RSI 기준일은 ${esc((d.etfs.find((e) => e.rsi_weekly_date) || {}).rsi_weekly_date || '—')} 주 확정.
+    </div>`;
+}
+
+/* ---------------- 공포지수 요약 (시장 탭) ---------------- */
+function renderFearGreedSummary() {
+  const fg = state.fearGreed;
+  const el = $('fg-summary');
+  if (!el) return;
+  if (!fg) {
+    el.innerHTML = '<div class="empty">공포지수 분석 결과가 없습니다.</div>';
+    return;
+  }
+  const sweet = (fg.fg_buckets || []).find((b) => b.label === 'extreme fear');
+  const vSweet = (fg.vix_buckets || []).find((b) => b.lo === 20);
+  el.innerHTML = `
+    <div class="guide">
+      <p><b>공포가 극심할수록 매수 신호의 성과가 좋다.</b></p>
+      <ul>
+        <li>Fear &amp; Greed 가 extreme fear 였던 날: SPY 21거래일 후
+        평균 <b>${sweet ? pct(sweet.avg_21d_pct, 2) : '—'}</b>,
+        승률 <b>${sweet ? sweet.win_pct : '—'}%</b> (n=${sweet ? sweet.n : '—'}, 최근 1년)</li>
+        <li>10년 검증 (VIX 52주 고점 대비 20~30% 구간):
+        평균 <b>${vSweet ? pct(vSweet.avg_21d_pct, 2) : '—'}</b>,
+        승률 <b>${vSweet ? vSweet.win_pct : '—'}%</b> (n=${vSweet ? vSweet.n : '—'})</li>
+      </ul>
+      <p><button class="link-btn" data-goto="verify">검증 탭에서 자세히 ›</button></p>
+    </div>`;
 }
 
 /* ---------------- Fear & Greed ---------------- */
@@ -1097,7 +1187,7 @@ function renderGuide() {
       <p>0~100 점수와 5개 등급(극심한 공포 · 공포 · 중립 · 탐욕 · 극심한 탐욕)이다.
       8개 구성요소(S&P500 모멘텀 · 주가 강도 · 시장 폭 · 풋/콜 비율 · VIX 변동성 ·
       저등급채 수요 · 안전자산 수요)를 합산해 만든다.
-      카드는 매수 타이밍 탭 맨 위에 있다.</p>
+      카드는 <b>시장 탭</b>에 있다.</p>
       <h4>공포가 극심할수록 매수 신호 성과가 좋다</h4>
       <ul>
         <li>Fear &amp; Greed 가 extreme fear 였던 날: SPY 21거래일 후
@@ -1210,6 +1300,15 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('[data-tab]').forEach((b) =>
     b.addEventListener('click', () => switchTab(b.dataset.tab))
   );
+
+  // 매수 탭 상단 시장 요약 배지 → 시장 탭 이동
+  $('ms-btn').addEventListener('click', () => switchTab('market'));
+
+  // [검증 탭에서 자세히] 링크
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-goto]');
+    if (b) switchTab(b.dataset.goto);
+  });
 
   $('mkt-btn').addEventListener('click', () => {
     const cfg = MARKETS[state.market];
