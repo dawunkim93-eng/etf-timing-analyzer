@@ -30,11 +30,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from universe import (  # noqa: E402
     BARS_FOR_52W,
+    BEAR_LOOKBACK,
     EXIT_RSI,
     EXIT_RSI_STRICT,
     MA_LONG,
     MARKETS,
     MAX_HOLD_DAYS,
+    REGIME_METHOD,
+    REGIME_THRESHOLD,
     RSI_PERIOD,
     RSI_TIMEFRAME,
     SIGNAL_LOW_FROM_52W,
@@ -221,26 +224,41 @@ def rsi_at(p: dict, i: int, tf: str = "weekly") -> float | None:
     return p["rsi_w"][p["dates"][i]]
 
 
-def bench_regime_map(prep: dict[str, dict], bench: str) -> dict[str, bool]:
-    """날짜 → 약세 국면인지. 벤치마크 252거래일 수익률 < 0.
+def bench_regime_map(prep: dict[str, dict], bench: str, method: str = "lt20") -> dict[str, bool]:
+    """날짜 → 약세 국면인지.
 
     ★ 날짜 기준 딕셔너리로 반환한다 ★
     ETF 마다 상장일이 달라 봉 인덱스가 안 맞는다. XLC 는 2018-06 에
     상장이라 SPY 의 i 번째 봉과 XLC 의 i 번째 봉이 다른 날짜다.
-    인덱스로 접근하면 국면 판정이 어긋난다.
+
+    method "lt20"  : Lunde-Timmermann 20% 규칙 (직전 고점/저점 대비 반전)
+    method "ret12" : 레거시. 1년 수익률 부호
     """
     b = prep.get(bench)
     if not b:
         return {}
     closes = b["c"]
     dates = b["dates"]
-    flags: dict[str, bool] = {}
-    for i in range(len(closes)):
+    if method == "lt20":
+        th = REGIME_THRESHOLD / 100.0
+        state, peak, trough = "bull", closes[0], closes[0]
+        flags: dict[str, bool] = {}
+        for price, day in zip(closes, dates):
+            peak, trough = max(peak, price), min(trough, price)
+            if state == "bull" and price <= peak * (1 - th):
+                state, trough = "bear", price
+            elif state == "bear" and price >= trough * (1 + th):
+                state, peak = "bull", price
+            flags[day] = state == "bear"
+        return flags
+    # 레거시
+    flags = {}
+    for i, day in enumerate(dates):
         if i < BARS_FOR_52W:
-            flags[dates[i]] = False
+            flags[day] = False
         else:
             base = closes[i - BARS_FOR_52W]
-            flags[dates[i]] = base > 0 and closes[i] / base - 1 < 0
+            flags[day] = base > 0 and closes[i] / base - 1 < 0
     return flags
 
 
@@ -252,12 +270,13 @@ def simulate(
     stop: float | None = STOP_LOSS,
     hold_max: int = MAX_HOLD_DAYS,
     rsi_tf: str = "weekly",
+    regime_map: dict[str, bool] | None = None,
 ) -> list[dict]:
     """매수 신호 → 청산까지 시뮬레이션. 종목별 1회 보유(중복 진입 없음).
 
     rsi_tf: 진입·익절 판정에 쓸 RSI 시간프레임 ("weekly" | "daily")
     """
-    bear_flags = bench_regime_map(prep, bench)
+    bear_flags = regime_map if regime_map is not None else bench_regime_map(prep, bench)
     trades: list[dict] = []
     # 벤치마크 날짜 → 종가 (알파 계산용)
     bench_p = prep.get(bench)
@@ -495,10 +514,15 @@ def main() -> None:
         ("rsi70_plain_bear", EXIT_RSI_STRICT, True),
     ]
 
-    def run_all(rsi_tf: str) -> dict:
+    lt_map = bench_regime_map(prep, bench, "lt20")
+    ret12_map = bench_regime_map(prep, bench, "ret12")
+
+    def run_all(rsi_tf: str, rmap: dict[str, bool]) -> dict:
         variants = {}
         for key, rx, bear_only in combos:
-            trades = simulate(prep, bench, rx, bear_only, rsi_tf=rsi_tf)
+            trades = simulate(
+                prep, bench, rx, bear_only, rsi_tf=rsi_tf, regime_map=rmap
+            )
             variants[key] = {
                 "exit_rsi": rx,
                 "bear_only": bear_only,
@@ -507,20 +531,24 @@ def main() -> None:
             }
         return variants
 
-    # 주봉 (현행 기준) 과 일봉 (교체 전) 을 둘 다 돌려 비교한다.
-    variants = run_all("weekly")
-    daily_variants = run_all("daily")
+    # 주봉 RSI + LT 20% 국면 (현행 기준)
+    variants = run_all("weekly", lt_map)
+    # 비교용: 주봉 RSI + 레거시 1년수익률 국면
+    ret12_variants = run_all("weekly", ret12_map)
+    # 비교용: 일봉 RSI + LT 국면 (RSI 기준만 교체한 효과)
+    daily_variants = run_all("daily", lt_map)
 
     for key, rx, bear_only in combos:
         v = variants[key]
         s, p = v["trade_stats"], v["portfolio"]
         d = daily_variants[key]
+        r12 = ret12_variants[key]
         print(
             f"  {key:22s} n={s.get('n', 0):5d} avg={s.get('avg_pct', 0):+7.2f}% "
             f"win={s.get('win_pct', 0):5.1f}% alpha={s.get('alpha_avg_pct', 0):+6.2f}% "
             f"| 포트 {p.get('final', 0):.2f}배 연 {p.get('cagr_pct', 0):+6.2f}% "
             f"MDD {p.get('max_dd_pct', 0):6.1f}%"
-            f"  [일봉기준: 연 {d['portfolio'].get('cagr_pct', 0):+6.2f}%]"
+            f"  [1년기준 연 {r12['portfolio'].get('cagr_pct', 0):+6.2f}%]"
         )
 
     ctrl = random_control(prep)
@@ -535,6 +563,8 @@ def main() -> None:
         "benchmark": bench,
         "rsi_timeframe": RSI_TIMEFRAME,
         "rsi_period": RSI_PERIOD,
+        "regime_method": REGIME_METHOD,
+        "regime_threshold": REGIME_THRESHOLD,
         "rules": {
             "low_from_52w": SIGNAL_LOW_FROM_52W,
             "rsi_max": SIGNAL_RSI_MAX,
@@ -544,9 +574,17 @@ def main() -> None:
             "exit_rsi_strict": EXIT_RSI_STRICT,
             "stop_loss": STOP_LOSS,
             "max_hold_days": MAX_HOLD_DAYS,
-            "bear_rule": "벤치마크 252거래일 수익률 < 0",
+            "bear_rule": (
+                "Lunde-Timmermann 20% 규칙 — 직전 고점에서 20% 빠지면 하락장, "
+                "직전 저점에서 20% 오르면 상승장"
+                if REGIME_METHOD == "lt20"
+                else "벤치마크 252거래일 수익률 < 0"
+            ),
+            "regime_method": REGIME_METHOD,
+            "regime_threshold": REGIME_THRESHOLD,
         },
         "variants": variants,
+        "ret12_variants": ret12_variants,
         "daily_variants": daily_variants,
         "random_control": ctrl,
         "disclaimer": (

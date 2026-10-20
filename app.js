@@ -118,15 +118,19 @@ function render() {
   const regime = d.regime;
 
   // 헤더
+  const bench = d.benchmark || {};
   $('hero-title').textContent =
     regime === 'bear' ? '지금은 약세 국면' : regime === 'bull' ? '지금은 상승 국면' : '국면 판단 불가';
-  const bench = d.benchmark || {};
+  const hr = $('hero-regime');
+  if (hr) {
+    hr.textContent = `${regime === 'bear' ? '약세' : '상승'} 국면` +
+      (bench.regime_since ? ` · ${bench.regime_since} 전환` : '');
+  }
   const baseDate = etfs.find((e) => e.rsi_weekly_date)?.rsi_weekly_date || '';
   $('hero-desc').innerHTML =
     `52주 최저가 대비 <b>10% 이내</b> + 주봉 RSI <b>50 이하</b> 인 종목을 찾습니다. ` +
     `현재 ${etfs.filter((e) => e.signal.raw_pass).length}개가 원조건을 충족합니다.` +
     (baseDate ? ` <span style="opacity:.85">RSI 기준: ${esc(baseDate)} 주 확정</span>` : '');
-  document.querySelector('.hero .regime-line')?.remove();
 
   // 상태바
   const upd = d.updated_at_kst || '';
@@ -136,19 +140,29 @@ function render() {
     `<span>갱신 ${esc(upd)} KST</span><span class="${stale ? 'stale' : ''}">` +
     `${stale ? `오래됨 (${ageH.toFixed(0)}시간 전)` : '정상'} · ${etfs.length}종목</span>`;
 
-  // 국면 카드
+  // 국면 카드 — 라벨만 두지 말고 근거를 함께 보여준다
   const rEl = $('regime-body');
   if (bench && bench.price !== undefined) {
+    const since = bench.regime_since;
+    const dd = bench.regime_dd;
     rEl.innerHTML = `
       <span class="regime-badge ${regime === 'bear' ? 'bear' : 'bull'}">${
         regime === 'bear' ? '약세 국면' : '상승 국면'
       }</span>
       <div class="regime-detail">
-        ${esc(bench.name || bench.ticker)} ${fmtPrice(bench.price, d.currency_label)} ·
-        1년 <b class="${cls(bench.ret_12m)}">${pct(bench.ret_12m)}</b> ·
+        ${esc(bench.name || bench.ticker)} ${fmtPrice(bench.price, d.currency_label)}
+        ${since ? `· <b>${esc(since)}</b> 전환` : ''}
+        ${dd !== null && dd !== undefined ? `· 고점 대비 <b class="${cls(dd)}">${pct(dd)}</b>` : ''}
+        <br>
+        52주 고점 대비 <b class="${cls(bench.from_high_pct)}">${pct(bench.from_high_pct)}</b> ·
         200일선 <b>${bench.ma200_above ? '위' : '아래'}</b> ·
-        RSI ${num(bench.rsi, 1)}
-        <br>약세 판정 기준: 벤치마크 1년 수익률 0% 미만
+        주봉 RSI <b>${num(bench.rsi, 1)}</b> ·
+        1년 <b class="${cls(bench.ret_12m)}">${pct(bench.ret_12m)}</b>
+        <br><span style="font-size:.72rem;opacity:.8">
+        판정 기준: ${bench.regime_method === 'lt20'
+          ? '직전 고점 대비 20% 하락 / 직전 저점 대비 20% 상승'
+          : '1년 수익률 부호'} (${esc(bench.regime_index || '')} 지수 기준)
+        </span>
       </div>`;
   } else {
     rEl.innerHTML = '<div class="empty">벤치마크를 못 불러와 국면을 판정하지 못했습니다.</div>';
@@ -173,7 +187,12 @@ function renderBuy(etfs) {
     : `<div class="empty">${
         regime === 'bear'
           ? '약세 국면이지만 두 조건을 동시에 만족하는 종목이 없습니다.'
-          : '지금은 상승 국면이라 약세 필터 신호가 없습니다.<br>아래 2순위(원조건)를 참고하세요.'
+          : `<b>지금은 상승 국면입니다.</b><br>
+             이 규칙은 <b>약세 국면에서만</b> 검증되었습니다.<br>
+             10년 백테스트에서 상승 국면에는 매수 신호가 거의 잡히지 않고,
+             잡힌 것은 지수를 따라가지 못했습니다.<br>
+             <span style="font-size:.76rem">매수 후보를 임의로 만들지 않습니다.
+             아래 2순위는 참고용입니다.</span>`
       }</div>`;
 
   $('raw-list').innerHTML = rawOnly.length
@@ -193,7 +212,11 @@ function signalCard(e, isRegime) {
     depthLabel ? `<span class="tag depth ${depthCls(depthLabel)}">고점 대비 ${esc(depthLabel)}</span>` : '',
   ];
   if (isRegime) tags.push('<span class="tag star">★ 약세 필터</span>');
-  else tags.push('<span class="tag warn">원조건만</span>');
+  else tags.push(
+    regime === 'bull'
+      ? '<span class="tag warn">원조건만 · 참고용</span>'
+      : '<span class="tag warn">원조건만</span>'
+  );
 
   return `<div class="sig">
     <div class="sig-top">
@@ -642,6 +665,58 @@ function renderVerify() {
     $('tf-table').innerHTML = '';
   }
 
+  // ── 국면 판정 방식 비교 ──
+  const rv = bt.ret12_variants;
+  if (rv) {
+    $('rg-compare').innerHTML = `
+      <div class="guide">
+        <p>국면을 <b>1년 수익률 부호</b>로 판정하면 오류가 난다.
+        한국 KODEX 200 이 1년 +81.8% 여서 "상승 국면" 으로 표시됐는데,
+        실제로는 52주 고점 대비 -42.6%, 200일선 아래였다.
+        1년 수익률은 <b>추세가 아니라 '과거 대비'</b> 다.</p>
+        <p><b>Lunde-Timmermann 20% 규칙</b>은 직전 고점에서 20% 빠지면 하락장,
+        직전 저점에서 20% 오르면 상승장으로 판정한다. 상태가 유지되므로
+        10년 동안 국면 전환이 <b>22회 → 6회</b>로 줄었다.</p>
+        <div class="warnp">단점도 있다. LT 규칙은 2022-2023 하락장을 243일짜리
+        하나로 묶어, "지수가 아직 덜 빠진 때" 진입하는 비율이 낮아진다.
+        그래서 <b>연평균과 알파는 1년 방식이 낫고, 승률·평균수익·최대낙폭은 LT 가 낫다.</b>
+        어느 쪽도 지수를 이기지는 못한다.</div>
+      </div>`;
+
+    const rgRows = [
+      ['원조건만 · RSI&gt;60 익절', 'rsi60_plain'],
+      ['약세 필터 · RSI&gt;60 익절', 'rsi60_plain_bear'],
+      ['약세 필터 · RSI&gt;70 익절', 'rsi70_plain_bear'],
+    ];
+    $('rg-table').innerHTML = `
+      <thead><tr><th>구성</th><th>국면 기준</th><th>거래</th><th>평균</th><th>승률</th>
+      <th>알파</th><th>연평균</th><th>MDD</th><th>투자비중</th></tr></thead>
+      <tbody>${rgRows
+        .map(([label, key]) => {
+          const l = bt.variants[key];
+          const r = rv[key];
+          const row = (o, tfName) => {
+            const s = o.trade_stats, p = o.portfolio;
+            return `<tr>
+            <td class="c">${label}</td>
+            <td class="mute">${tfName}</td>
+            <td>${s.n}</td>
+            <td class="${cls2(s.avg_pct)}">${pct(s.avg_pct, 2)}</td>
+            <td>${s.win_pct}%</td>
+            <td class="${cls2(s.alpha_avg_pct)}">${pct(s.alpha_avg_pct, 2)}</td>
+            <td class="${cls2(p.cagr_pct)}">${pct(p.cagr_pct, 2)}</td>
+            <td class="neg">${pct(p.max_dd_pct, 1)}</td>
+            <td class="mute">${p.invested_pct}%</td>
+          </tr>`;
+          };
+          return row(r, '1년수익률') + row(l, 'LT 20% (현행)');
+        })
+        .join('')}</tbody>`;
+  } else {
+    $('rg-compare').innerHTML = '';
+    $('rg-table').innerHTML = '';
+  }
+
   const reasonRows = bear.trade_stats.reasons || {};
   $('bt-reasons').innerHTML = `
     <thead><tr><th>청산 사유</th><th>거래</th><th>평균</th><th>승률</th></tr></thead>
@@ -769,19 +844,38 @@ function renderGuide() {
     </div>`;
 
   const b = d.benchmark || {};
+  const rg = state.backtest?.variants?.rsi60_plain_bear;
+  const rg12 = state.backtest?.ret12_variants?.rsi60_plain_bear;
   $('g-regime').innerHTML = `
     <div class="guide">
-      <h4>판정 기준</h4>
-      <p>벤치마크(${esc(b.name || '지수')})의 <span class="em">최근 252거래일 수익률이 0% 미만</span>
-      이면 약세 국면입니다.</p>
-      <h4>왜 필터로 쓰나</h4>
-      <p>10년 백테스트에서 이 조건만 걸면 연평균 수익이 <b>${state.backtest?.variants?.rsi60_plain?.portfolio?.cagr_pct ?? '—'}%</b> →
-      약세 국면 한정으로 <b>${state.backtest?.variants?.rsi60_plain_bear?.portfolio?.cagr_pct ?? '—'}%</b> 로,
-      최대 낙폭은 <b>${state.backtest?.variants?.rsi60_plain?.portfolio?.max_dd_pct ?? '—'}%</b> →
-      <b>${state.backtest?.variants?.rsi60_plain_bear?.portfolio?.max_dd_pct ?? '—'}%</b> 로 나아집니다.</p>
-      <div class="warnp">단, 투자 비중이 30%대로 떨어집니다.
-      상승장에는 이 규칙으로 따라갈 자리가 없습니다. 그래서 화면에
-      <b>원조건 신호도 함께</b> 보여줍니다. 판단은 본인 몫입니다.</div>
+      <h4>판정 기준 — Lunde-Timmermann 20% 규칙</h4>
+      <p>지수(${esc(b.regime_index || b.name || '지수')})가
+      <span class="em">직전 고점에서 20% 빠지면 하락장</span>,
+      <span class="em">직전 저점에서 20% 오르면 상승장</span>입니다.
+      상태가 유지되므로 "한 달짜리 지수"가 아니라 <b>추세</b>를 읽습니다.</p>
+      <h4>왜 1년 수익률로 판정하지 않나</h4>
+      <p>1년 수익률은 <b>추세가 아니라 '과거 대비'</b>입니다.
+      한국 KODEX 200이 1년 +81.8%여서 "상승 국면"으로 표시됐던 적이 있는데,
+      실제로는 52주 고점 대비 -42.6%, 200일선 아래였습니다.</p>
+      <p>10년 동안 1년 방식은 국면을 <b>22번</b> 뒤집었고, LT 규칙은 <b>6번</b>입니다.
+      1년 방식은 매달 국면이 반전돼 "약세 국면" 표시가 신뢰를 못 줍니다.</p>
+      <h4>백테스트 결과 (10년, 미국 ETF 40종목)</h4>
+      <ul>
+        <li>약세 필터 시 평균수익 <b>${rg ? pct(rg.trade_stats.avg_pct, 2) : '—'}</b>,
+        승률 <b>${rg ? rg.trade_stats.win_pct : '—'}%</b>,
+        최대낙폭 <b>${rg ? pct(rg.portfolio.max_dd_pct, 1) : '—'}</b></li>
+        <li>1년 방식 대비 연평균은 <b>${rg12 ? pct(rg12.portfolio.cagr_pct, 2) : '—'} →
+        ${rg ? pct(rg.portfolio.cagr_pct, 2) : '—'}</b> 로 낮고,
+        알파도 <b>${rg12 ? pct(rg12.trade_stats.alpha_avg_pct, 2) : '—'} →
+        ${rg ? pct(rg.trade_stats.alpha_avg_pct, 2) : '—'}</b> 다</li>
+      </ul>
+      <div class="warnp">LT 규칙은 2022-2023 하락장을 243일짜리 하나로 묶기 때문에
+      "지수가 아직 덜 빠진 때" 진입하는 비율이 낮아진다. 그래서 연평균과 알파는
+      1년 방식이 낫고, <b>승률·평균수익·최대낙폭은 LT 가 낫다.</b>
+      어느 쪽도 지수를 이기지는 못한다. 검증 탭에 두 방식의 자리를 다 비교해 둔다.</div>
+      <div class="warnp">또 하나 — <b>이 규칙은 약세 국면에서만 검증되었다.</b>
+      상승 국면에는 매수 신호가 거의 잡히지 않고, 잡힌 것은 지수를 따라가지 못했다.
+      그래서 상승 국면에서 1순위 신호가 0개여도 <b>매수 후보를 임의로 만들지 않는다.</b></div>
     </div>`;
 
   $('g-calc').innerHTML = `

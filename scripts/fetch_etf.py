@@ -38,6 +38,9 @@ from universe import (  # noqa: E402
     MA_LONG,
     MA_SHORT,
     MARKETS,
+    REGIME_HISTORY_YEARS,
+    REGIME_METHOD,
+    REGIME_THRESHOLD,
     RSI_PERIOD,
     RSI_TIMEFRAME,
     SIGNAL_LOW_FROM_52W,
@@ -271,6 +274,34 @@ def weekly_rsi_lookup(bars: list[dict]) -> tuple[dict[str, float | None], str | 
     return lookup, base_date, w_rsi
 
 
+def swing_regime(
+    closes: list[float], dates: list[str], th: float = REGIME_THRESHOLD
+) -> tuple[str, str, float]:
+    """지수 고점·저점 대비 th% 반전으로 상승장·하락장을 가른다.
+
+    Lunde-Timmermann(2004)의 20% 기준을 실시간 계산이 가능한 형태로 옮긴 것
+    (원래 방식은 사후에 고점·저점을 찾으므로 오늘 시점에서는 쓸 수 없다).
+    참고 사이트(sowt89/my-invest-analysis)와 같은 로직이다.
+
+    ★ 왜 1년 수익률로 판정하지 않나 ★
+    1년 수익률은 '추세'가 아니라 '과거 대비' 다. 한국 KODEX 200 이
+    1년 +80% 여서 '상승 국면' 으로 표시됐지만 실제로는 52주 고점 대비
+    -43%, 200일선 아래였다. 이 규칙은 상태가 유지되므로
+    '한 달짜리 지수'가 아니라 '추세'를 읽는다.
+    10년 검증: 1년 방식은 국면을 22번 뒤집었고 이 규칙은 6번이다.
+
+    반환: (regime, regime_since, 고점 대비 하락률 %)
+    """
+    state, peak, trough, since = "bull", closes[0], closes[0], dates[0]
+    for price, day in zip(closes, dates):
+        peak, trough = max(peak, price), min(trough, price)
+        if state == "bull" and price <= peak * (1 - th / 100):
+            state, trough, since = "bear", price, day
+        elif state == "bear" and price >= trough * (1 + th / 100):
+            state, peak, since = "bull", price, day
+    return state, since, (closes[-1] / peak - 1) * 100
+
+
 def sma(values: list[float], n: int) -> float | None:
     if len(values) < n:
         return None
@@ -427,14 +458,15 @@ def collect_market(market: str, session) -> dict:
         for t, data in ex.map(one, tickers):
             results[t] = data
 
-    # 벤치마크 — 국면 판정 기준
+    # ---- 벤치마크 (ETF) — 현재가·52주저점·MA 등 표시용 ----
     bench_t = f"{meta['benchmark']}{meta['yahoo_suffix']}"  # type: ignore[index]
     bench_raw = results.get(bench_t) or fetch_chart(session, bench_t)
     benchmark: dict = {}
     regime = None
+    regime_since = None
+    regime_dd = None
     if bench_raw:
         bi = build_indicators(bench_raw["bars"], meta, bench_raw)
-        regime = "bear" if (bi.get("ret_12m") is not None and bi["ret_12m"] < 0) else "bull"
         benchmark = {
             "ticker": meta["benchmark"],  # type: ignore[index]
             "name": meta["benchmark_name"],  # type: ignore[index]
@@ -445,10 +477,45 @@ def collect_market(market: str, session) -> dict:
             "ma200": bi["ma200"],
             "ma200_above": bi["ma200_dist_pct"] is not None and bi["ma200_dist_pct"] > 0,
             "rsi": bi["rsi"],
-            "regime": regime,
         }
+
+    # ---- 국면 판정 ----
+    # LT 20% 규칙은 지수의 **전체 경로**가 필요하다 (고점·저점을 누적 추적).
+    # 2년치로는 2022년 하락장을 기억 못한다. 그래서 국면 판정용 지수(^GSPC/^KS11)는
+    # 따로 10년치를 받는다.
+    index_t = str(meta.get("benchmark_index") or "")  # type: ignore[union-attr]
+    index_raw = None
+    if index_t:
+        index_raw = fetch_chart(
+            session, index_t, rng=f"{REGIME_HISTORY_YEARS}y", interval="1d"
+        )
+    regime_path: list[tuple[str, float]] = []
+    if index_raw:
+        regime_path = [(b["date"], b["close"]) for b in index_raw["bars"]]
+    elif bench_raw:
+        # 지수 못 받으면 ETF 벤치마크의 2년치로 대체 (정확도는 떨어진다)
+        print("  ! 지수 지표 실패 — 벤치마크 ETF 2년치로 국면 판정 (정확도 낮음)")
+        regime_path = [(b["date"], b["close"]) for b in bench_raw["bars"]]
+
+    if regime_path:
+        closes = [c for _, c in regime_path]
+        dates = [d for d, _ in regime_path]
+        if REGIME_METHOD == "lt20":
+            regime, regime_since, dd = swing_regime(closes, dates, REGIME_THRESHOLD)
+            regime_dd = dd
+        else:
+            # 레거시: 1년 수익률 부호
+            regime = "bear" if (len(closes) > BEAR_LOOKBACK
+                                and closes[-1] / closes[-1 - BEAR_LOOKBACK] - 1 < 0) else "bull"
+            regime_dd = (closes[-1] / max(closes[-BARS_FOR_52W:]) - 1) * 100
+        benchmark["regime"] = regime
+        benchmark["regime_since"] = regime_since
+        benchmark["regime_dd"] = rnd(regime_dd, 2)
+        benchmark["regime_method"] = REGIME_METHOD
+        benchmark["regime_index"] = index_t or bench_t
+        benchmark["regime_index_bars"] = len(regime_path)
     else:
-        print("  ! 벤치마크 수집 실패 — 국면 판정 불가 (신호는 raw_pass 로만 표시)")
+        print("  ! 국면 판정 불가 — 신호는 raw_pass 로만 표시")
 
     etfs: list[dict] = []
     failed: list[str] = []
@@ -498,6 +565,8 @@ def collect_market(market: str, session) -> dict:
             "rsi_max": SIGNAL_RSI_MAX,
             "rsi_timeframe": RSI_TIMEFRAME,
             "rsi_period": RSI_PERIOD,
+            "regime_method": REGIME_METHOD,
+            "regime_threshold": REGIME_THRESHOLD,
         },
     }
 

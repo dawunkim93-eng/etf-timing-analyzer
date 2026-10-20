@@ -117,6 +117,7 @@ MARKETS: dict[str, dict[str, object]] = {
         "etfs": US_ETFS,
         "yahoo_suffix": "",          # 야후 티커 그대로
         "benchmark": "SPY",
+        "benchmark_index": "^GSPC",  # 국면 판정용 지수 (10년치)
         "benchmark_name": "S&P500",
         "currency": "$",
         "currency_label": "USD",
@@ -126,6 +127,7 @@ MARKETS: dict[str, dict[str, object]] = {
         "etfs": KR_ETFS,
         "yahoo_suffix": ".KS",        # 코스피 종목코드
         "benchmark": "069500",
+        "benchmark_index": "^KS11",   # 국면 판정용 지수 (10년치)
         "benchmark_name": "KODEX 200",
         "currency": "₩",
         "currency_label": "KRW",
@@ -166,7 +168,22 @@ WEEKLY_MIN_BARS = 15        # RSI(14) 계산에 최소 15주 필요
 MA_LONG = 200                # 장기 추세선
 MA_SHORT = 50                # 단기 추세선
 BARS_FOR_52W = 252           # 52주 = 약 252거래일
-BEAR_LOOKBACK = 252          # 국면 판정용 1년 수익률
+BEAR_LOOKBACK = 252          # 참고용 1년 수익률 (국면 판정 아님)
+
+# ------------------------------------------------- 시장 국면 판정
+# 1년 수익률 부호로 판정하면 안 된다.
+#   한국 KODEX 200 이 1년 +80% 여서 "상승 국면" 으로 표시됐는데,
+#   실제로는 52주 고점 대비 -43%, 200일선 아래였다.
+#   1년 전 가격 대비라는 건 '추세'가 아니라 '과거 대비' 다.
+#
+# Lunde-Timmermann(2004) 20% 규칙을 쓴다 (참고 사이트와 동일):
+#   직전 고점에서 20% 빠지면 하락장
+#   직전 저점에서 20% 오르면 상승장
+# 상태가 유지되므로 '한 달짜리 지수'가 아니라 '추세'를 읽는다.
+#   10년 검증: 1년 방식은 국면을 22번 뒤집었고, 이 규칙은 6번이다.
+REGIME_METHOD = "lt20"      # "lt20" | "ret12"
+REGIME_THRESHOLD = 20.0     # 고점/저점 대비 반전 %
+REGIME_HISTORY_YEARS = 10   # 국면 판정용 벤치마크 이력 (LT 는 전체 경로가 필요)
 
 # ------------------------------------------------- 52주 고점 대비 낙폭 버킷
 # 10년 백테스트에서 낙폭이 클수록 매수 성과가 좋다는 게 확인됐다.

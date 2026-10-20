@@ -20,6 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from universe import (  # noqa: E402
     DEPTH_SWEET_SPOT,
     MARKETS,
+    REGIME_METHOD,
+    REGIME_THRESHOLD,
     RSI_PERIOD,
     RSI_TIMEFRAME,
     SIGNAL_LOW_FROM_52W,
@@ -99,9 +101,23 @@ def validate_market(market: str) -> None:
         err(f"{where}: regime 값이 '{data.get('regime')}' — bull/bear/None 이어야 함")
 
     bench = data.get("benchmark") or {}
-    for key in ("ticker", "price", "ret_12m", "regime"):
+    for key in ("ticker", "price", "ret_12m", "regime", "regime_since",
+                "regime_dd", "regime_method"):
         if key not in bench:
             err(f"{where}: benchmark 에 '{key}' 없음")
+    if bench.get("regime") not in ("bull", "bear"):
+        err(f"{where}: benchmark.regime={bench.get('regime')!r} — bull/bear 이어야 함")
+    if bench.get("regime_method") != REGIME_METHOD:
+        err(f"{where}: benchmark.regime_method={bench.get('regime_method')!r} ≠ {REGIME_METHOD}")
+    since = bench.get("regime_since")
+    bdate = bench.get("date")
+    if since and bdate and since > bdate:
+        err(f"{where}: regime_since({since}) 가 데이터 날짜({bdate}) 보다 미래")
+    # LT 규칙이면 지수 이력이 충분해야 한다 (전체 경로가 필요)
+    if REGIME_METHOD == "lt20":
+        bars_n = bench.get("regime_index_bars")
+        if not isinstance(bars_n, int) or bars_n < 1000:
+            err(f"{where}: LT 규칙인데 국면 판정용 지수 이력이 {bars_n}봉 — 1000봉 이상 필요")
 
     # --- 규칙 상수 일치 ---
     rules = data.get("rules") or {}
@@ -113,6 +129,10 @@ def validate_market(market: str) -> None:
         err(f"{where}: rules.rsi_timeframe={rules.get('rsi_timeframe')} ≠ {RSI_TIMEFRAME}")
     if rules.get("rsi_period") != RSI_PERIOD:
         err(f"{where}: rules.rsi_period={rules.get('rsi_period')} ≠ {RSI_PERIOD}")
+    if rules.get("regime_method") != REGIME_METHOD:
+        err(f"{where}: rules.regime_method={rules.get('regime_method')} ≠ {REGIME_METHOD}")
+    if rules.get("regime_threshold") != REGIME_THRESHOLD:
+        err(f"{where}: rules.regime_threshold={rules.get('regime_threshold')} ≠ {REGIME_THRESHOLD}")
 
     # --- 종목 ---
     etfs = data.get("etfs") or []
