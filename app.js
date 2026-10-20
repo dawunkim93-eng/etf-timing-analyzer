@@ -85,6 +85,16 @@ function sparkline(values, w = 150, h = 34) {
 }
 
 /* ------------------------------------------------------------------ 로드 */
+/* 시장 세그먼트 상태 갱신 — 보고 있는 시장만 하이라이트한다. */
+function updateMarketButtons() {
+  document.querySelectorAll('[data-market]').forEach((b) => {
+    const on = b.dataset.market === state.market;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+}
+
+
 async function loadMarket(market) {
   const cfg = MARKETS[market];
   $('data-status').textContent = '불러오는 중…';
@@ -97,7 +107,7 @@ async function loadMarket(market) {
     return;
   }
   state.market = market;
-  $('mkt-btn').textContent = `${cfg.label} → ${cfg.otherLabel}`;
+  updateMarketButtons();
   render();
 }
 
@@ -157,8 +167,13 @@ function render() {
   const upd = d.updated_at_kst || '';
   const ageH = d.updated_at ? (Date.now() - Date.parse(d.updated_at)) / 3600000 : null;
   const stale = ageH !== null && ageH > 12;
+  // 시장명을 항상 보여준다 — '지금은 약세 국면' 만으로는 한국인지 미국인지 구분 안 됨
+  const mkLabel = state.market === 'kr' ? '한국' : '미국';
+  const benchName = bench.name || '';
   $('data-status').innerHTML =
-    `<span>갱신 ${esc(upd)} KST</span><span class="${stale ? 'stale' : ''}">` +
+    `<span><b>${mkLabel}</b>${benchName ? ` · ${esc(benchName)}` : ''}</span>` +
+    `<span>갱신 ${esc(upd)} KST</span>` +
+    `<span class="${stale ? 'stale' : ''}">` +
     `${stale ? `오래됨 (${ageH.toFixed(0)}시간 전)` : '정상'} · ${etfs.length}종목</span>`;
 
   // 국면 카드 — 라벨만 두지 말고 근거를 함께 보여준다
@@ -211,6 +226,7 @@ function renderMarketSummary() {
   badge.textContent = isBear ? '약세 국면' : '상승 국면';
   badge.className = 'ms-badge ' + (isBear ? 'bear' : 'bull');
   const bits = [];
+  bits.push(state.market === 'kr' ? '한국' : '미국');
   if (b.regime_since) bits.push(`${b.regime_since} 전환`);
   if (b.regime_dd !== null && b.regime_dd !== undefined) {
     bits.push(`고점 대비 ${pct(b.regime_dd)}`);
@@ -1388,10 +1404,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (b) switchTab(b.dataset.goto);
   });
 
-  $('mkt-btn').addEventListener('click', () => {
-    const cfg = MARKETS[state.market];
-    loadMarket(cfg.other);
-  });
+  document.querySelectorAll('[data-market]').forEach((b) =>
+    b.addEventListener('click', () => {
+      if (b.dataset.market !== state.market) loadMarket(b.dataset.market);
+    })
+  );
 
   $('theme-btn').addEventListener('click', () => {
     document.body.classList.toggle('dark');

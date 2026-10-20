@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#f7f7f5">
 <meta name="description" content="미국·한국 주요 ETF 타이밍 분석 — 52주 최저가 대비 10% 이내, RSI 50 이하 매수 신호와 익절·손절 타이밍">
 <title>ETF 타이밍 분석</title>
-<link rel="stylesheet" href="styles.css?v=a4419a98">
+<link rel="stylesheet" href="styles.css?v=e2a19863">
 </head>
 <body>
 
@@ -15,7 +15,10 @@
   <div class="wrap">
     <div class="logo">ETF</div>
     <h1>ETF 타이밍 분석</h1>
-    <button id="mkt-btn" class="chip" title="시장 전환">🇺🇸 미국</button>
+    <div class="seg-mkt" role="tablist" aria-label="시장 선택">
+      <button class="seg-mkt-btn on" data-market="us" role="tab" aria-selected="true">🇺🇸 미국</button>
+      <button class="seg-mkt-btn" data-market="kr" role="tab" aria-selected="false">🇰🇷 한국</button>
+    </div>
     <button id="theme-btn" class="chip" title="다크모드">🌙</button>
   </div>
 </header>
@@ -312,6 +315,6 @@
   <button data-tab="guide"><span>설명서</span></button>
 </nav>
 
-<script src="app.js?v=2e4f3732"></script>
+<script src="app.js?v=cc2ec845"></script>
 </body>
 </html>

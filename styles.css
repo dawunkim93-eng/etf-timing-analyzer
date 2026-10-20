@@ -280,3 +280,21 @@ body.dark .bench-item{background:#202124}
 .link-btn{background:none;border:none;color:var(--orange);font-size:.76rem;
   font-weight:700;padding:4px 0;cursor:pointer;font-family:inherit;text-align:left}
 .link-btn:hover{text-decoration:underline}
+
+/* ---------- 시장 세그먼트 컨트롤 ----------
+ * 버튼이 "현재 → 이동대상" 형태(🇺🇸 미국 → 🇰🇷 한국)면 화살표가 이동 대상으로
+ * 읽혀서, 보고 있는 화면이 어느 쪽인지 헷갈린다.
+ * 그래서 2개 버튼으로 나눠 현재 위치만 하이라이트한다.
+ */
+.seg-mkt{display:flex;background:var(--bg);border:1px solid var(--line);
+  border-radius:20px;padding:2px;flex-shrink:0;gap:2px}
+.seg-mkt-btn{background:none;border:none;border-radius:16px;padding:5px 10px;
+  font-size:.75rem;font-weight:700;color:var(--ink3);cursor:pointer;
+  white-space:nowrap;font-family:inherit;line-height:1.3;
+  transition:background .15s,color .15s}
+.seg-mkt-btn.on{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.06)}
+body.dark .seg-mkt-btn.on{background:var(--dk2);color:var(--dk-ink);box-shadow:none}
+.seg-mkt-btn:hover:not(.on){color:var(--ink2)}
+@media (max-width:430px){
+  .seg-mkt-btn{padding:5px 8px;font-size:.72rem}
+}
