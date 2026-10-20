@@ -36,6 +36,7 @@ from universe import (  # noqa: E402
     MARKETS,
     MAX_HOLD_DAYS,
     RSI_PERIOD,
+    RSI_TIMEFRAME,
     SIGNAL_LOW_FROM_52W,
     SIGNAL_RSI_MAX,
     STOP_LOSS,
@@ -157,8 +158,44 @@ def load_history(refresh: bool) -> dict[str, dict]:
 
 
 # ------------------------------------------------------------------ 시뮬
+def to_weekly(bars: list[dict]) -> list[dict]:
+    """일봉 → 주봉. ISO 주(월~금) 로 묶고 각 주 마지막 거래일만 남긴다."""
+    import datetime as dt
+
+    weeks: dict[tuple[int, int], dict] = {}
+    for b in bars:
+        d = dt.date.fromisoformat(b["d"])
+        weeks[d.isocalendar()[:2]] = b
+    return [weeks[k] for k in sorted(weeks)]
+
+
+def weekly_rsi_map(bars: list[dict]) -> dict[str, float | None]:
+    """날짜 → 확정된 주봉 RSI.
+
+    ★ 무목적 ★
+    주봉은 그 주의 마지막 거래일에 확정된다. 그래서 날짜 d 시점에 쓸 수
+    있는 값은 **이미 지나간 주** 뿐이다.
+      w_dates 里에서 d 보다 작은 마지막 항목 = bisect_left(d) - 1
+    (bisect_left 는 'd 이상인 첫 위치' 를 주므로 그 직전이 답이다)
+    """
+    import bisect
+
+    weekly = to_weekly(bars)
+    w_dates = [b["d"] for b in weekly]
+    w_rsi = rsi_series([b["c"] for b in weekly], RSI_PERIOD)
+    out: dict[str, float | None] = {}
+    for b in bars:
+        j = bisect.bisect_left(w_dates, b["d"]) - 1
+        out[b["d"]] = w_rsi[j] if j >= 0 else None
+    return out
+
+
 def prepare(hist: dict[str, dict]) -> dict[str, dict]:
-    """각 종목의 파생 배열을 미리 계산."""
+    """각 종목의 파생 배열을 미리 계산.
+
+    rsi     : 주봉 확정값 (판정 기준)
+    rsi_d   : 일봉 값 (비교·레거시용)
+    """
     prepared = {}
     for t, rec in hist.items():
         bars = rec["bars"]
@@ -171,23 +208,39 @@ def prepare(hist: dict[str, dict]) -> dict[str, dict]:
             "l": lows,
             "h": highs,
             "rsi": rsi_series(closes),
+            "rsi_d": rsi_series(closes),
+            "rsi_w": weekly_rsi_map(bars),
         }
     return prepared
 
 
-def bench_regime_map(prep: dict[str, dict], bench: str) -> list[bool]:
-    """각 날짜가 약세 국면인지. 벤치마크 252거래일 수익률 < 0."""
+def rsi_at(p: dict, i: int, tf: str = "weekly") -> float | None:
+    """tf 에 따라 해당 시점의 RSI 를 돌려준다."""
+    if tf == "daily":
+        return p["rsi_d"][i]
+    return p["rsi_w"][p["dates"][i]]
+
+
+def bench_regime_map(prep: dict[str, dict], bench: str) -> dict[str, bool]:
+    """날짜 → 약세 국면인지. 벤치마크 252거래일 수익률 < 0.
+
+    ★ 날짜 기준 딕셔너리로 반환한다 ★
+    ETF 마다 상장일이 달라 봉 인덱스가 안 맞는다. XLC 는 2018-06 에
+    상장이라 SPY 의 i 번째 봉과 XLC 의 i 번째 봉이 다른 날짜다.
+    인덱스로 접근하면 국면 판정이 어긋난다.
+    """
     b = prep.get(bench)
     if not b:
-        return []
+        return {}
     closes = b["c"]
-    flags = []
+    dates = b["dates"]
+    flags: dict[str, bool] = {}
     for i in range(len(closes)):
         if i < BARS_FOR_52W:
-            flags.append(False)
+            flags[dates[i]] = False
         else:
             base = closes[i - BARS_FOR_52W]
-            flags.append(base > 0 and closes[i] / base - 1 < 0)
+            flags[dates[i]] = base > 0 and closes[i] / base - 1 < 0
     return flags
 
 
@@ -198,8 +251,12 @@ def simulate(
     bear_only: bool,
     stop: float | None = STOP_LOSS,
     hold_max: int = MAX_HOLD_DAYS,
+    rsi_tf: str = "weekly",
 ) -> list[dict]:
-    """매수 신호 → 청산까지 시뮬레이션. 종목별 1회 보유(중복 진입 없음)."""
+    """매수 신호 → 청산까지 시뮬레이션. 종목별 1회 보유(중복 진입 없음).
+
+    rsi_tf: 진입·익절 판정에 쓸 RSI 시간프레임 ("weekly" | "daily")
+    """
     bear_flags = bench_regime_map(prep, bench)
     trades: list[dict] = []
     # 벤치마크 날짜 → 종가 (알파 계산용)
@@ -215,7 +272,7 @@ def simulate(
         n = len(closes)
         i = BARS_FOR_52W
         while i < n:
-            r = rsi[i]
+            r = rsi_at(p, i, rsi_tf)
             if r is None:
                 i += 1
                 continue
@@ -224,7 +281,7 @@ def simulate(
                 i += 1
                 continue
             if bear_only:
-                if i >= len(bear_flags) or not bear_flags[i]:
+                if not bear_flags.get(p["dates"][i], False):
                     i += 1
                     continue
 
@@ -234,7 +291,8 @@ def simulate(
             reason = "만료"
             for j in range(i + 1, min(n, i + hold_max + 1)):
                 cs = closes[j]
-                if rsi[j] is not None and rsi[j] > exit_rsi:
+                rj = rsi_at(p, j, rsi_tf)
+                if rj is not None and rj > exit_rsi:
                     exit_i, reason = j, f"RSI>{int(exit_rsi)}"
                     break
                 if stop is not None and cs / entry - 1 <= -stop:
@@ -430,27 +488,39 @@ def main() -> None:
     if bench not in prep:
         bench = next(iter(prep))
 
-    variants = {}
     combos = [
         ("rsi60_plain", EXIT_RSI, False),
         ("rsi60_plain_bear", EXIT_RSI, True),
         ("rsi70_plain", EXIT_RSI_STRICT, False),
         ("rsi70_plain_bear", EXIT_RSI_STRICT, True),
     ]
+
+    def run_all(rsi_tf: str) -> dict:
+        variants = {}
+        for key, rx, bear_only in combos:
+            trades = simulate(prep, bench, rx, bear_only, rsi_tf=rsi_tf)
+            variants[key] = {
+                "exit_rsi": rx,
+                "bear_only": bear_only,
+                "trade_stats": summarize(trades),
+                "portfolio": portfolio_curve(trades, prep),
+            }
+        return variants
+
+    # 주봉 (현행 기준) 과 일봉 (교체 전) 을 둘 다 돌려 비교한다.
+    variants = run_all("weekly")
+    daily_variants = run_all("daily")
+
     for key, rx, bear_only in combos:
-        trades = simulate(prep, bench, rx, bear_only)
-        variants[key] = {
-            "exit_rsi": rx,
-            "bear_only": bear_only,
-            "trade_stats": summarize(trades),
-            "portfolio": portfolio_curve(trades, prep),
-        }
-        s = variants[key]["trade_stats"]
-        p = variants[key]["portfolio"]
+        v = variants[key]
+        s, p = v["trade_stats"], v["portfolio"]
+        d = daily_variants[key]
         print(
             f"  {key:22s} n={s.get('n', 0):5d} avg={s.get('avg_pct', 0):+7.2f}% "
-            f"win={s.get('win_pct', 0):5.1f}% | 포트폴리오 {p.get('final', 0):.2f}배 "
-            f"연 {p.get('cagr_pct', 0):+6.2f}% MDD {p.get('max_dd_pct', 0):6.1f}%"
+            f"win={s.get('win_pct', 0):5.1f}% alpha={s.get('alpha_avg_pct', 0):+6.2f}% "
+            f"| 포트 {p.get('final', 0):.2f}배 연 {p.get('cagr_pct', 0):+6.2f}% "
+            f"MDD {p.get('max_dd_pct', 0):6.1f}%"
+            f"  [일봉기준: 연 {d['portfolio'].get('cagr_pct', 0):+6.2f}%]"
         )
 
     ctrl = random_control(prep)
@@ -463,9 +533,13 @@ def main() -> None:
         "universe_size": len(prep),
         "history_range": HISTORY_RANGE,
         "benchmark": bench,
+        "rsi_timeframe": RSI_TIMEFRAME,
+        "rsi_period": RSI_PERIOD,
         "rules": {
             "low_from_52w": SIGNAL_LOW_FROM_52W,
             "rsi_max": SIGNAL_RSI_MAX,
+            "rsi_timeframe": RSI_TIMEFRAME,
+            "rsi_period": RSI_PERIOD,
             "exit_rsi": EXIT_RSI,
             "exit_rsi_strict": EXIT_RSI_STRICT,
             "stop_loss": STOP_LOSS,
@@ -473,6 +547,7 @@ def main() -> None:
             "bear_rule": "벤치마크 252거래일 수익률 < 0",
         },
         "variants": variants,
+        "daily_variants": daily_variants,
         "random_control": ctrl,
         "disclaimer": (
             "생존 편향 없는 유니버스가 아니다 — 지금 살아있는 ETF 로 돌아간다. "

@@ -30,6 +30,8 @@ from universe import (  # noqa: E402
     DEPTH_LOW_SAMPLE,
     DEPTH_SWEET_SPOT,
     MAX_HOLD_DAYS,
+    RSI_PERIOD,
+    RSI_TIMEFRAME,
     SIGNAL_LOW_FROM_52W,
     SIGNAL_RSI_MAX,
 )
@@ -67,10 +69,10 @@ def collect_signal_rows(prep: dict[str, dict], bench_close: dict[str, float]) ->
     """
     rows: list[dict] = []
     for t, p in prep.items():
-        closes, lows, highs, rsi, dates = p["c"], p["l"], p["h"], p["rsi"], p["dates"]
+        closes, lows, highs, dates = p["c"], p["l"], p["h"], p["dates"]
         n = len(closes)
         for i in range(BARS_FOR_52W, n - MAX_HOLD_DAYS):
-            r = rsi[i]
+            r = p["rsi_w"][dates[i]]   # 주봉 확정값
             if r is None or r > SIGNAL_RSI_MAX:
                 continue
             low52 = min(lows[i - BARS_FOR_52W + 1: i + 1])
@@ -235,9 +237,13 @@ def build_depth_analysis(prep: dict[str, dict], bench: str) -> dict:
         "benchmark": bench,
         "universe_size": len(prep),
         "hold_days": MAX_HOLD_DAYS,
+        "rsi_timeframe": RSI_TIMEFRAME,
+        "rsi_period": RSI_PERIOD,
         "rules": {
             "low_from_52w": SIGNAL_LOW_FROM_52W,
             "rsi_max": SIGNAL_RSI_MAX,
+            "rsi_timeframe": RSI_TIMEFRAME,
+            "rsi_period": RSI_PERIOD,
             "hold_days": MAX_HOLD_DAYS,
         },
         "unfiltered": stats(rows),

@@ -18,6 +18,8 @@
 
 from __future__ import annotations
 
+import bisect
+import datetime as dt
 import json
 import math
 import os
@@ -37,8 +39,10 @@ from universe import (  # noqa: E402
     MA_SHORT,
     MARKETS,
     RSI_PERIOD,
+    RSI_TIMEFRAME,
     SIGNAL_LOW_FROM_52W,
     SIGNAL_RSI_MAX,
+    WEEKLY_MIN_BARS,
     depth_bucket,
     yahoo_ticker,
 )
@@ -96,7 +100,11 @@ def make_session():
 
 
 def fetch_chart(session, ticker: str, rng: str = CHART_RANGE, interval: str = "1d"):
-    """야후 일봉. [{date, close, low, high}] 반환. 실패하면 None."""
+    """야후 일봉.
+
+    반환: {"bars": [{date, close, low, high}], "meta_price", "meta_date", "meta_time"}
+    실패하면 None.
+    """
     import urllib.parse
 
     last_err: Exception | None = None
@@ -123,6 +131,7 @@ def fetch_chart(session, ticker: str, rng: str = CHART_RANGE, interval: str = "1
                 time.sleep(2.0 * (2 ** attempt))
                 continue
             res = rows[0]
+            meta = res.get("meta") or {}
             stamps = res.get("timestamp") or []
             quote = (res.get("indicators", {}).get("quote") or [{}])[0]
             closes = quote.get("close") or []
@@ -145,7 +154,24 @@ def fetch_chart(session, ticker: str, rng: str = CHART_RANGE, interval: str = "1
                         "high": float(hi),
                     }
                 )
-            return out or None
+            if not out:
+                return None
+            # 야후 일봉 배열의 마지막 봉은 실제 마지막 거래_session 보다
+            # 하루씩 밀려 있다 (2026-10-20 기준 meta 는 10-19 종가인데
+            # 배열은 10-16 까지만 있다). 가격 표시는 meta 를 쓴다.
+            meta_price = meta.get("regularMarketPrice")
+            meta_time = meta.get("regularMarketTime")
+            meta_date = None
+            if isinstance(meta_time, (int, float)):
+                meta_date = dt.datetime.fromtimestamp(
+                    meta_time, tz=dt.timezone.utc
+                ).strftime("%Y-%m-%d")
+            return {
+                "bars": out,
+                "meta_price": float(meta_price) if isinstance(meta_price, (int, float)) else None,
+                "meta_date": meta_date,
+                "meta_time": meta_time,
+            }
         except Exception as exc:  # noqa: BLE001
             last_err = exc
             time.sleep(2.0 * (2 ** attempt))
@@ -192,6 +218,59 @@ def rsi_series(closes: list[float], period: int = RSI_PERIOD) -> list[float | No
     return out
 
 
+def to_weekly(bars: list[dict]) -> list[dict]:
+    """일봉 → 주봉. ISO 주(월~금) 로 묶고 각 주 마지막 거래일만 남긴다.
+
+    isocalendar() 의 (연도, 주차) 를 키로 쓰면, 월요일이 다른 주의 시작이 되는
+    문제를 피할 수 있다. 단순히 5일 단위로 자르면 경계가 어긋난다.
+    """
+    weeks: dict[tuple[int, int], dict] = {}
+    for b in bars:
+        d = dt.date.fromisoformat(b["date"])
+        weeks[d.isocalendar()[:2]] = b   # 마지막 encountered = 그 주의 마지막 거래일
+    return [weeks[k] for k in sorted(weeks)]
+
+
+def weekly_rsi_lookup(bars: list[dict]) -> tuple[dict[str, float | None], str | None, list]:
+    """날짜 → 확정된 주봉 RSI 매핑을 만든다.
+
+    ★ 미래정보 주의 ★
+    주봉 RSI 는 그 주가 끝나야 확정된다. 주중에 "이번 주 RSI" 를 계산하면
+    아직 오지 않은 날짜의 데이터가 들어간다. 그래서 어떤 날짜에서든
+    **이미 끝난** 마지막 주봉만 쓴다 (bisect_left).
+
+    반환: (날짜→RSI 매핑, 마지막 확정 주봉의 기준일, 주봉 RSI 리스트)
+    """
+    weekly = to_weekly(bars)
+    w_dates = [b["date"] for b in weekly]
+    w_rsi = rsi_series([b["close"] for b in weekly], RSI_PERIOD)
+    # ★ 무목적 주봉 매핑 ★
+    # 주봉의 날짜 w 는 "그 주의 마지막 거래일" 이다.
+    # 어떤 날짜 d 시점에 쓸 수 있는 값은 **이미 지나간 주** 뿐이다.
+    #   w < d  → 그 주는 끝났다 → 확정값 사용 가능
+    #   w == d → 그 주는 오늘 끝난다 → 아직 확정 아님 (같은 날 장중이면 미래)
+    #
+    #   w_dates = [..., '10-09', '10-16', '10-19']
+    #   d = '2026-10-19' (월) → 쓸 수 있는 마지막 확정 주 = '10-16' (금)
+    #
+    # bisect_left(w_dates, d) 는 'd 이상인 첫 위치' 다.
+    #   - d 가 w_dates 에 있으면 → 그 인덱스가 미확정 주, 직전이 답 (j-1)
+    #   - d 가 없으면          → j 가 'd 보다 큰 첫 위치', 직전이 답 (j-1)
+    # 두 경우 모두 답은 j-1 이다.
+    def last_completed_idx(d: str) -> int:
+        return bisect.bisect_left(w_dates, d) - 1
+
+    lookup: dict[str, float | None] = {}
+    for b in bars:
+        j = last_completed_idx(b["date"])
+        lookup[b["date"]] = w_rsi[j] if j >= 0 else None
+    # 마지막 확정 주봉의 기준일
+    last_idx = last_completed_idx(bars[-1]["date"])
+    base_date = w_dates[last_idx] if last_idx >= 0 else None
+
+    return lookup, base_date, w_rsi
+
+
 def sma(values: list[float], n: int) -> float | None:
     if len(values) < n:
         return None
@@ -205,13 +284,27 @@ def pct_change(a: float, b: float) -> float | None:
     return (b / a - 1.0) * 100.0
 
 
-def build_indicators(bars: list[dict], market_meta: dict) -> dict:
-    """일봉 → 화면/신호에 필요한 지표."""
+def build_indicators(bars: list[dict], market_meta: dict, raw: dict | None = None) -> dict:
+    """일봉 → 화면/신호에 필요한 지표.
+
+    ★ 지표 시간프레임 ★
+    - RSI      : 주봉 (확정된 마지막 주)
+    - 나머지   : 일봉 (52주 저·고점, MA50/200, 수익률, 낙폭)
+
+    야후 일봉 배열의 마지막 봉은 실제 마지막 거래일보다 하루 밀려 있다.
+    그래서 '현재가' 는 meta 의 regularMarketPrice 를 쓴다.
+    단, 지표(저·고점, MA, RSI)는 일봉 배열 그대로 계산한다 — 배열이
+    어제까지여도 지표는 거기까지의 값으로 일관된다.
+    """
     closes = [b["close"] for b in bars]
     lows = [b["low"] for b in bars]
     highs = [b["high"] for b in bars]
     dates = [b["date"] for b in bars]
     px = closes[-1]
+    # 표시용 현재가 — meta 우선 (일봉 배열보다 하루 신선)
+    meta_price = (raw or {}).get("meta_price")
+    meta_date = (raw or {}).get("meta_date")
+    display_px = meta_price if isinstance(meta_price, (int, float)) and meta_price else px
 
     win = bars[-BARS_FOR_52W:]
     low_52w = min(b["low"] for b in win)
@@ -219,7 +312,19 @@ def build_indicators(bars: list[dict], market_meta: dict) -> dict:
 
     ma50 = sma(closes, MA_SHORT)
     ma200 = sma(closes, MA_LONG)
-    rsi = wilder_rsi(closes)
+
+    # --- RSI: 주봉 기준 (무목적) ---
+    # 판정에 쓰는 rsi 는 주봉 확정값이다. 일봉 RSI 는 참고용으로 함께 둔다.
+    rsi_daily = wilder_rsi(closes)
+    w_lookup, w_base_date, w_rsi_series = weekly_rsi_lookup(bars)
+    rsi = w_lookup.get(dates[-1])
+    rsi_weekly_raw = w_rsi_series[-1] if w_rsi_series else None
+    # 주봉 RSI 이력 (스파크라인용) — 확정된 주봉만
+    weekly_bars = to_weekly(bars)
+    weekly_dates = [b["date"] for b in weekly_bars]
+    weekly_rsi_hist = [
+        (d, v) for d, v in zip(weekly_dates, w_rsi_series) if v is not None
+    ]
 
     # 기간 수익률 — 거래일 개수 기준 (달력일이 아니라)
     def ret_n(n: int) -> float | None:
@@ -244,13 +349,18 @@ def build_indicators(bars: list[dict], market_meta: dict) -> dict:
         regime = "bear" if (regime_ret is not None and regime_ret < 0) else "bull"
 
     return {
-        "price": rnd(px),
-        "date": dates[-1],
+        "price": rnd(display_px),
+        "price_series_date": dates[-1],
+        "date": meta_date or dates[-1],
         "low_52w": rnd(low_52w),
         "high_52w": rnd(high_52w),
         "from_low_pct": rnd(from_low),
         "from_high_pct": rnd(from_high),
         "rsi": rnd(rsi, 1),
+        "rsi_daily": rnd(rsi_daily, 1),
+        "rsi_weekly_date": w_base_date,
+        "rsi_weekly_raw": rnd(rsi_weekly_raw, 1),
+        "rsi_timeframe": RSI_TIMEFRAME,
         "ma50": rnd(ma50),
         "ma200": rnd(ma200),
         "ma200_dist_pct": rnd(pct_change(ma200, px)) if ma200 else None,
@@ -264,7 +374,8 @@ def build_indicators(bars: list[dict], market_meta: dict) -> dict:
         # 최근 120일 종가·RSI — 스파크라인 + 매도 대시보드용
         "spark": [rnd(c) for c in closes[-120:]],
         "spark_dates": dates[-120:],
-        "rsi_hist": [rnd(v, 1) for v in rsi_series(closes)[-120:]],
+        "rsi_hist": [rnd(v, 1) for _, v in weekly_rsi_hist[-60:]],
+        "rsi_hist_dates": [d for d, _ in weekly_rsi_hist[-60:]],
     }
 
 
@@ -273,6 +384,9 @@ def apply_signal(etf: dict, regime: str | None) -> dict:
 
     raw_pass  : 52주저점+10% 이내 AND RSI<=50  (사용자가 정한 원조건)
     regime_pass: raw_pass AND 시장이 약세 국면   (백테스트에서 강했던 조건)
+
+    ★ RSI 는 주봉 확정값이다 (etf["rsi"]). 일봉 값은 etf["rsi_daily"] 에
+    참고용으로 따로 담아둔다. 판정에는 쓰지 않는다.
     """
     low_pct = etf.get("from_low_pct")
     rsi = etf.get("rsi")
@@ -315,11 +429,11 @@ def collect_market(market: str, session) -> dict:
 
     # 벤치마크 — 국면 판정 기준
     bench_t = f"{meta['benchmark']}{meta['yahoo_suffix']}"  # type: ignore[index]
-    bench_bars = results.get(bench_t) or fetch_chart(session, bench_t)
+    bench_raw = results.get(bench_t) or fetch_chart(session, bench_t)
     benchmark: dict = {}
     regime = None
-    if bench_bars:
-        bi = build_indicators(bench_bars, meta)
+    if bench_raw:
+        bi = build_indicators(bench_raw["bars"], meta, bench_raw)
         regime = "bear" if (bi.get("ret_12m") is not None and bi["ret_12m"] < 0) else "bull"
         benchmark = {
             "ticker": meta["benchmark"],  # type: ignore[index]
@@ -340,12 +454,13 @@ def collect_market(market: str, session) -> dict:
     failed: list[str] = []
     for code, name, category, theme in rows:
         t = f"{code}{meta['yahoo_suffix']}"
-        bars = results.get(t)
+        raw = results.get(t)
+        bars = raw["bars"] if raw else None
         if not bars or len(bars) < BARS_FOR_52W:
             failed.append(code)
             print(f"  [{len(etfs) + len(failed):2d}/{len(rows)}] {code:7s} 실패 (봉 {len(bars) if bars else 0})")
             continue
-        ind = build_indicators(bars, meta)
+        ind = build_indicators(bars, meta, raw)
         row = {
             "code": code,
             "ticker": code,
@@ -381,6 +496,8 @@ def collect_market(market: str, session) -> dict:
         "rules": {
             "low_from_52w": SIGNAL_LOW_FROM_52W,
             "rsi_max": SIGNAL_RSI_MAX,
+            "rsi_timeframe": RSI_TIMEFRAME,
+            "rsi_period": RSI_PERIOD,
         },
     }
 

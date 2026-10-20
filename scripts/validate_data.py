@@ -20,6 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from universe import (  # noqa: E402
     DEPTH_SWEET_SPOT,
     MARKETS,
+    RSI_PERIOD,
+    RSI_TIMEFRAME,
     SIGNAL_LOW_FROM_52W,
     SIGNAL_RSI_MAX,
     depth_bucket,
@@ -107,6 +109,10 @@ def validate_market(market: str) -> None:
         err(f"{where}: rules.low_from_52w={rules.get('low_from_52w')} ≠ {SIGNAL_LOW_FROM_52W}")
     if rules.get("rsi_max") != SIGNAL_RSI_MAX:
         err(f"{where}: rules.rsi_max={rules.get('rsi_max')} ≠ {SIGNAL_RSI_MAX}")
+    if rules.get("rsi_timeframe") != RSI_TIMEFRAME:
+        err(f"{where}: rules.rsi_timeframe={rules.get('rsi_timeframe')} ≠ {RSI_TIMEFRAME}")
+    if rules.get("rsi_period") != RSI_PERIOD:
+        err(f"{where}: rules.rsi_period={rules.get('rsi_period')} ≠ {RSI_PERIOD}")
 
     # --- 종목 ---
     etfs = data.get("etfs") or []
@@ -159,6 +165,28 @@ def validate_market(market: str) -> None:
         expect_reg = expect_raw and data.get("regime") == "bear"
         if sig.get("regime_pass") != expect_reg:
             err(f"{w}: signal.regime_pass={sig.get('regime_pass')} 인데 계산값은 {expect_reg}")
+
+        # --- RSI (주봉) 정합성 ---
+        check_number(e.get("rsi"), "rsi", w, lo=0, hi=100)
+        check_number(e.get("rsi_daily"), "rsi_daily", w, lo=0, hi=100)
+        base = e.get("rsi_weekly_date")
+        etf_date = e.get("date")
+        if not base:
+            err(f"{w}: rsi_weekly_date 없음 (주봉 기준일이 필수)")
+        elif etf_date and base > etf_date:
+            # ★ 미래정보 검사 ★
+            err(f"{w}: rsi_weekly_date({base}) 가 데이터 날짜({etf_date}) 보다 미래")
+        if e.get("rsi_timeframe") != RSI_TIMEFRAME:
+            err(f"{w}: rsi_timeframe={e.get('rsi_timeframe')} ≠ {RSI_TIMEFRAME}")
+        # 주봉 기준일은 요일이 금요일이어야 (주봉 = 주의 마지막 거래일)
+        if base:
+            import datetime as _dt
+            try:
+                bd = _dt.date.fromisoformat(base)
+                if bd.weekday() != 4:   # 4 = 금요일
+                    warn(f"{w}: 주봉 기준일 {base} 가 금요일이 아님 (휴장일 경우 가능)")
+            except ValueError:
+                err(f"{w}: rsi_weekly_date 형식 오류 ({base!r})")
 
         # 낙폭 버킷 — from_high_pct 와 일치해야 한다
         expect_bucket = depth_bucket(e.get("from_high_pct"))

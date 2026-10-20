@@ -121,9 +121,11 @@ function render() {
   $('hero-title').textContent =
     regime === 'bear' ? '지금은 약세 국면' : regime === 'bull' ? '지금은 상승 국면' : '국면 판단 불가';
   const bench = d.benchmark || {};
+  const baseDate = etfs.find((e) => e.rsi_weekly_date)?.rsi_weekly_date || '';
   $('hero-desc').innerHTML =
-    `52주 최저가 대비 <b>10% 이내</b> + RSI <b>50 이하</b> 인 종목을 찾습니다. ` +
-    `현재 ${etfs.filter((e) => e.signal.raw_pass).length}개가 원조건을 충족합니다.`;
+    `52주 최저가 대비 <b>10% 이내</b> + 주봉 RSI <b>50 이하</b> 인 종목을 찾습니다. ` +
+    `현재 ${etfs.filter((e) => e.signal.raw_pass).length}개가 원조건을 충족합니다.` +
+    (baseDate ? ` <span style="opacity:.85">RSI 기준: ${esc(baseDate)} 주 확정</span>` : '');
   document.querySelector('.hero .regime-line')?.remove();
 
   // 상태바
@@ -205,8 +207,9 @@ function signalCard(e, isRegime) {
         <div class="v ${lowOk ? 'pass' : 'fail'}">${pct(e.from_low_pct)}</div>
       </div>
       <div class="metric">
-        <div class="k">RSI(14)</div>
+        <div class="k">RSI(14주)</div>
         <div class="v ${rsiOk ? 'pass' : 'fail'}">${num(e.rsi, 1)}</div>
+        <div class="k sub">${esc(e.rsi_weekly_date || '')} 주 확정</div>
       </div>
       <div class="metric">
         <div class="k">고점 대비</div>
@@ -276,8 +279,9 @@ function renderSell(etfs) {
             <div class="v">${fmtPrice(e.price, state.data.currency_label)}</div>
           </div>
           <div class="metric">
-            <div class="k">RSI(14)</div>
+            <div class="k">RSI(14주)</div>
             <div class="v ${hot ? 'warn' : ''}">${num(e.rsi, 1)}</div>
+            <div class="k sub">${esc(e.rsi_weekly_date || '')} 주 확정</div>
           </div>
           <div class="metric">
             <div class="k">고점 대비</div>
@@ -356,7 +360,7 @@ function renderAll(etfs) {
   $('all-count').textContent = `${rows.length}종목`;
   $('all-table').innerHTML = `
     <thead><tr>
-      <th>종목</th><th>카테고리</th><th>현재가</th><th>저점대비</th><th>RSI</th>
+      <th>종목</th><th>카테고리</th><th>현재가</th><th>저점대비</th><th>RSI(14주)</th>
       <th>고점대비</th><th>200일선</th><th>1년</th><th>상태</th>
     </tr></thead>
     <tbody>${rows
@@ -366,7 +370,7 @@ function renderAll(etfs) {
       <td class="mute">${esc(e.category)}</td>
       <td>${fmtPrice(e.price, state.data.currency_label)}</td>
       <td class="${e.from_low_pct <= 10 ? 'pos' : ''}">${pct(e.from_low_pct)}</td>
-      <td class="${e.rsi <= 50 ? 'pos' : ''}">${num(e.rsi, 1)}</td>
+      <td class="${e.rsi <= 50 ? 'pos' : ''}" title="일봉 RSI ${num(e.rsi_daily, 1)} (참고)">${num(e.rsi, 1)}</td>
       <td class="${e.from_high_pct <= -30 ? 'pos' : ''}">${pct(e.from_high_pct)}</td>
       <td class="${cls(e.ma200_dist_pct)}">${pct(e.ma200_dist_pct)}</td>
       <td class="${cls(e.ret_12m)}">${pct(e.ret_12m)}</td>
@@ -583,6 +587,61 @@ function renderVerify() {
       })
       .join('')}</tbody>`;
 
+  // ── 주봉 vs 일봉 비교 ──
+  const dv = bt.daily_variants;
+  if (dv) {
+    $('tf-compare').innerHTML = `
+      <div class="guide">
+        <p>RSI 기준을 <b>일봉 → 주봉</b> 으로 바꿨을 때의 차이입니다.
+        주봉은 "그 주가 끝나야" 확정되므로 <b>평일 중에는 값이 안 바뀝니다</b>.
+        신호가 사라졌다가 다시 뜨는 일이 일봉보다 5배 적습니다.</p>
+        <ul>
+          <li>판정 안정성 — 일봉 10.95% → 주봉 <b>2.18%</b> (뒤집힘 비율)</li>
+          <li>약세 국면 알파 — 일봉 ${pct(dv.rsi60_plain_bear.trade_stats.alpha_avg_pct, 2)} → 주봉 <b>${pct(bear.trade_stats.alpha_avg_pct, 2)}</b></li>
+        </ul>
+        <div class="warnp"><b>약세 필터 기준 연평균은 거의 같다</b>
+        (${pct(dv.rsi60_plain_bear.portfolio.cagr_pct, 2)} → ${pct(bear.portfolio.cagr_pct, 2)}).
+        대신 <b>알파가 확실히 낫다</b>
+        (${pct(dv.rsi60_plain_bear.trade_stats.alpha_avg_pct, 2)} → ${pct(bear.trade_stats.alpha_avg_pct, 2)}).
+        국면 필터 없이 쓰면 주봉이 손해다
+        (연 ${pct(dv.rsi60_plain.portfolio.cagr_pct, 2)} → ${pct(plain.portfolio.cagr_pct, 2)}).
+        주봉은 "느린" 탓이다 — 약세장 초반엔 아직 과열이라 신호가 안 나온다.</div>
+      </div>`;
+
+    const tfRows = [
+      ['원조건만 · RSI&gt;60 익절', 'rsi60_plain', false],
+      ['약세 필터 · RSI&gt;60 익절', 'rsi60_plain_bear', true],
+      ['약세 필터 · RSI&gt;70 익절', 'rsi70_plain_bear', true],
+    ];
+    $('tf-table').innerHTML = `
+      <thead><tr><th>구성</th><th>기준</th><th>거래</th><th>평균</th><th>승률</th><th>알파</th>
+      <th>연평균</th><th>MDD</th><th>투자비중</th></tr></thead>
+      <tbody>${tfRows
+        .map(([label, key]) => {
+          const w = bt.variants[key];
+          const d = dv[key];
+          const row = (o, tfName) => {
+            const s = o.trade_stats, p = o.portfolio;
+            return `<tr>
+            <td class="c">${label}</td>
+            <td class="mute">${tfName}</td>
+            <td>${s.n}</td>
+            <td class="${cls2(s.avg_pct)}">${pct(s.avg_pct, 2)}</td>
+            <td>${s.win_pct}%</td>
+            <td class="${cls2(s.alpha_avg_pct)}">${pct(s.alpha_avg_pct, 2)}</td>
+            <td class="${cls2(p.cagr_pct)}">${pct(p.cagr_pct, 2)}</td>
+            <td class="neg">${pct(p.max_dd_pct, 1)}</td>
+            <td class="mute">${p.invested_pct}%</td>
+          </tr>`;
+          };
+          return row(d, '일봉') + row(w, '주봉(현행)');
+        })
+        .join('')}</tbody>`;
+  } else {
+    $('tf-compare').innerHTML = '';
+    $('tf-table').innerHTML = '';
+  }
+
   const reasonRows = bear.trade_stats.reasons || {};
   $('bt-reasons').innerHTML = `
     <thead><tr><th>청산 사유</th><th>거래</th><th>평균</th><th>승률</th></tr></thead>
@@ -640,8 +699,21 @@ function renderGuide() {
       <h4>조건 1 — 52주 최저가 대비 ${r.low_from_52w}% 이내</h4>
       <p>현재가가 최근 252거래일의 <span class="em">최저가</span>에서
       ${r.low_from_52w}% 넘게 올랐지 않았다는 뜻입니다.popularity가 식은 지점입니다.</p>
-      <h4>조건 2 — RSI(14) ${r.rsi_max} 이하</h4>
+      <h4>조건 2 — 주봉 RSI(14) ${r.rsi_max} 이하</h4>
       <p>과열되지 않았다는 뜻입니다. RSI 50 을 넘으면 이미 반등이 진행된 상태로 봅니다.</p>
+      <p><b>주봉(14주 Wilder)</b> 을 씁니다. 일봉이 아니라.
+      <b>주봉은 그 주가 끝나야 확정</b>되므로 평일 중에는 값이 안 바뀝니다 —
+      금요일 종가 뒤 다음 주부터 새 값이 적용됩니다. 화면에는
+      "기준일"로 표시합니다.</p>
+      <p>주봉을 쓴 이유는 <b>안 흔들리기</b> 때문입니다. 'RSI 50 이하' 판정이
+      일봉은 11일에 1번(10.95%) 뒤집히는데 주봉은 2.18% 다.
+      하루 만에 신호가 사라졌다가 다시 뜨는 일이 줄어듭니다.</p>
+      <p>대신 주봉은 <b>느립니다</b>. 약세장 초반에는 아직 과열이라 신호가 안 나오고
+      바닥을 지나 반등이 확인된 뒤에야 잡힙니다. 그래서
+      <b>포트폴리오 연평균이 떨어집니다</b> (약세 필터 기준
+      ${state.backtest?.daily_variants?.rsi60_plain_bear?.portfolio?.cagr_pct ?? '—'}% →
+      ${state.backtest?.variants?.rsi60_plain_bear?.portfolio?.cagr_pct ?? '—'}%).
+      지수를 이기겠다는 게 아니라, <b>덜 흔들리고 손실은 더 작게</b> 만드는 선택입니다.</p>
       <h4>두 조건을 같이 쓰는 이유</h4>
       <p>저점 근접만 보면 <b>계속 떨어지는 중</b>인 종목도 잡힙니다. RSI 조건이 그걸 걸러냅니다.
       둘을 같이 쓰면 <span class="em">바닥을 확인한 반등 후보</span>만 남습니다.</p>
@@ -719,9 +791,19 @@ function renderGuide() {
       종가가 아니라 <b>장중 저가</b> 기준이라 실제 브로커 화면의 52주 최고·최저와
       대체로 일치합니다. 야후 메타의 52주 필드는 <b>한국 ETF 에서 0 을 반환</b>해서
       전부 직접 계산합니다.</p>
-      <h4>RSI</h4>
-      <p>Wilder 평활, 기간 14, 일봉 종가 기준. 6개월·1년·2년 어떤 구간으로 계산해도
-      같은 값이 나옵니다.</p>
+      <h4>RSI (주봉)</h4>
+      <p>Wilder 평활, 기간 <b>14주</b>, 주봉 종가 기준.
+      일봉을 ISO 주(월~금)로 묶고 각 주 마지막 거래일 종가를 쓴다.</p>
+      <p><b>무목적 처리</b> — 주봉은 그 주가 끝나야 확정된다. 그래서
+      어떤 날짜 시점에서든 <b>이미 지나간 주</b>의 값만 쓴다.
+      진행중 주의 RSI 를 쓰면 아직 오지 않은 날짜의 데이터가 섞여 미래정보가 된다.</p>
+      <p><b>시간프레임 혼합 금지</b> — RSI 만 주봉이고 52주 저·고점 / MA50 / MA200 /
+      수익률 / 낙폭은 <b>일봉 그대로</b>다. 이건 의도된 설계다.</p>
+      <h4>현재가</h4>
+      <p>야후 일봉 배열의 마지막 봉은 실제 마지막 거래일보다 하루씩 밀려 있다
+      (meta 는 오늘 거래분을 가지고 있는데 배열은 그 전까지다). 그래서 배열 끝에
+      meta 의 오늘 거래분을 <b>덧붙여</b> 모든 지표가 같은 기준일까지 계산되게 한다.
+      붙이지 않으면 현재가가 52주 저점 계산에서 빠지고 주봉 RSI 도 한 주 밀린다.</p>
       <h4>이동평균</h4>
       <p>50일·200일 단순 이동평균, 종가 기준. 200일선 이격은
       <code>(현재가 ÷ 200일선 − 1) × 100</code> 입니다.</p>

@@ -199,3 +199,7 @@ tr.crashrow td.c::after{content:" 폭락";font-size:.62rem;color:var(--warn-ink)
 .matrix td.neg{background:rgba(196,71,46,.13);color:var(--neg)}
 .matrix td.none{color:var(--ink3)}
 .matrix td.thin{opacity:.55}
+
+/* ---------- RSI 기준일 보조 라벨 ---------- */
+.metric .k.sub{font-size:.58rem;color:var(--ink3);font-weight:500;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.dark .metric .k.sub{color:var(--ink3)}
