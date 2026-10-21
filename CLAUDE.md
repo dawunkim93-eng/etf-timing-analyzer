@@ -206,6 +206,23 @@ DEPTH_LOW_SAMPLE = 500
 ★ `renderFearGreedSummary()` 는 `data/feargreed.json` 이 **나중에** 로드된다.
   `loadBacktest()` 가 끝난 뒤에 다시 호출해야 빈 상태로 남지 않는다.
 
+## 포트폴리오 저장
+
+`localStorage` 키 **`etf-portfolio`** (테마 키 `etf-theme` 와 분리).
+
+```jsonc
+{ "version": 1, "holdings": { "us": { "SPY": { "addedAt": "2026-10-21" } } } }
+```
+
+- **보유 종목 코드만** 저장한다. 수량·매수가·거래이력은 저장하지 않는다.
+  (익절 판정이 RSI·저점대비 % 기반이라 시세만으로 판단 가능)
+- **시장별로 분리** 저장 — 미국/한국이 섞이면 안 된다.
+- `loadPortfolio()` 는 `typeof localStorage` 가드 + `try/catch` + 스키마 검증.
+  `couple-asset-manager` 의 `lib/storage.ts:22-46` 과 같은 패턴.
+- 기기 간 동기화 없음 → `exportPortfolio()` / `importPortfolio()` 로 수동 백업.
+- ★ 이 사이트는 서버가 없다. `data/etf_*.json` 이 서버 프록시 역할을 대체한다.
+  (기존 `couple-asset-manager` 의 Yahoo API 프록시를 옮길 필요 없다)
+
 ## 코드 관례
 
 - 주석과 설명서는 **한국어**. 왜(why)를 쓴다.

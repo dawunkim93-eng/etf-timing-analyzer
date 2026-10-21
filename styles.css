@@ -298,3 +298,27 @@ body.dark .seg-mkt-btn.on{background:var(--dk2);color:var(--dk-ink);box-shadow:n
 @media (max-width:430px){
   .seg-mkt-btn{padding:5px 8px;font-size:.72rem}
 }
+
+/* ---------- 종목 검색 ---------- */
+.search-input{flex:1;min-width:0;background:var(--card);border:1px solid var(--line);
+  border-radius:9px;padding:9px 11px;font-size:.84rem;color:var(--ink);font-family:inherit}
+.search-input::placeholder{color:var(--ink3)}
+.search-input:focus{outline:none;border-color:var(--orange)}
+body.dark .search-input{background:var(--dk2)}
+
+/* ---------- 보유 버튼 ---------- */
+.pf-add{background:none;border:1px solid var(--line);border-radius:14px;padding:3px 9px;
+  font-size:.68rem;font-weight:700;color:var(--ink2);cursor:pointer;font-family:inherit;
+  white-space:nowrap;min-width:48px}
+.pf-add:hover{border-color:var(--orange);color:var(--orange)}
+.pf-add.on{background:var(--buy-bg);border-color:transparent;color:var(--buy-ink)}
+.pf-remove{background:none;border:1px solid var(--line);border-radius:14px;padding:3px 9px;
+  font-size:.68rem;font-weight:700;color:var(--ink3);cursor:pointer;font-family:inherit;white-space:nowrap}
+.pf-remove:hover{border-color:var(--neg);color:var(--neg)}
+
+/* ---------- 보유종목 카드 ---------- */
+.hold-summary{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  font-size:.8rem;color:var(--ink2);margin-bottom:4px}
+.hold-summary b{font-weight:800;color:var(--ink);font-size:.9rem}
+.hold-summary .mute{color:var(--ink3);font-size:.76rem}
+.tabular-nums{font-variant-numeric:tabular-nums}

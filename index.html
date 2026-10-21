@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#f7f7f5">
 <meta name="description" content="미국·한국 주요 ETF 타이밍 분석 — 52주 최저가 대비 10% 이내, RSI 50 이하 매수 신호와 익절·손절 타이밍">
 <title>ETF 타이밍 분석</title>
-<link rel="stylesheet" href="styles.css?v=e2a19863">
+<link rel="stylesheet" href="styles.css?v=bd97d8b3">
 </head>
 <body>
 
@@ -138,11 +138,30 @@
   </div>
 
   <div class="card">
-    <div class="card-h">보유 중 · 익절까지 거리</div>
+    <div class="card-h">내 보유종목 · 익절 타이밍</div>
+    <div class="card-b" id="hold-summary"></div>
+    <div class="card-b" id="hold-list"></div>
+    <div class="note">
+      보유 종목은 브라우저(localStorage)에만 저장됩니다. 기기·브라우저를 바꾸면
+      따라오지 않으니 <b>내보내기/가져오기</b>로 백업하세요.
+      <br>익절 판정은 <b>주봉 RSI</b>와 <b>52주 저점 대비 상승폭</b> 두 가지를 함께 봅니다.
+      RSI는 과열(익절) 측정, 저점대비는 진입 후 반등 체감 측정입니다.
+    </div>
+    <div class="card-b">
+      <div class="row">
+        <button class="link-btn" id="pf-export">내보내기</button>
+        <button class="link-btn" id="pf-import">가져오기</button>
+        <input type="file" id="pf-file" accept="application/json" style="display:none">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-h">지금 매수 신호가 뜬 종목</div>
     <div class="card-b" id="sell-list"></div>
     <div class="note">
-      매수 신호가 발생한 종목을 "보유 중"으로 간주해 현재 상태를 보여줍니다.
-      실제 보유 여부는 사이트가 알 수 없습니다.
+      매수 조건을 지금 만족하는 종목입니다. 이건 "내 보유" 가 아니라
+      <b>오늘 기준 신호</b>입니다. 내가 산 종목은 위 카드에서 따로 관리하세요.
     </div>
   </div>
 </section>
@@ -152,6 +171,10 @@
   <div class="card">
     <div class="card-h">필터 · 정렬</div>
     <div class="card-b">
+      <div class="row">
+        <input id="f-search" class="search-input" type="search" autocomplete="off"
+               placeholder="티커·이름·테마 검색 (예: SPY, 반도체, 방산)">
+      </div>
       <div class="row">
         <select id="f-cat">
           <option value="">전체 카테고리</option>
@@ -175,6 +198,12 @@
           <option value="none">미충족</option>
         </select>
         <span class="count" id="all-count"></span>
+      </div>
+      <div id="search-empty" style="display:none">
+        <div class="empty">
+          검색 결과가 없습니다.<br>
+          <button class="link-btn" id="search-reset">필터 초기화</button>
+        </div>
       </div>
       <div class="row">
         <select id="f-depth-all">
@@ -315,6 +344,6 @@
   <button data-tab="guide"><span>설명서</span></button>
 </nav>
 
-<script src="app.js?v=ce88ede1"></script>
+<script src="app.js?v=c230c037"></script>
 </body>
 </html>

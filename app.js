@@ -7,12 +7,13 @@ const $ = (id) => document.getElementById(id);
 const state = {
   market: 'us',
   data: null,
+  portfolio: null,
   backtest: null,
   depth: null,
   fearGreed: null,
   exitRsi: 60,
   stopPct: 15,
-  filters: { cat: '', sort: 'signal', state: '', depth: '', depthAll: '' },
+  filters: { cat: '', sort: 'signal', state: '', depth: '', depthAll: '', search: '' },
 };
 
 /* 낙폭 버킷 라벨 — universe.py 의 DEPTH_BUCKETS 와 같은 순서 */
@@ -42,6 +43,93 @@ const MARKETS = {
   kr: { label: '🇰🇷 한국', file: 'data/etf_kr.json', other: 'us', otherLabel: '🇺🇸 미국' },
 };
 
+/* ------------------------------------------------------------------ 포트폴리오
+ * 보유 종목만 저장한다 (수량·매수가·거래이력은 저장하지 않음).
+ * 익절 판정 기준이 RSI 와 '52주 저점 대비 %' 이고 둘 다 시세 데이터에서
+ * 바로 나오므로 매수 정보 없이도 판단 가능하다.
+ *
+ * localStorage 는 브라우저·기기별이다. 기기 바꾸면 안 따라오고
+ * 데이터를 지우면 사라진다 → JSON 내보내기/가져오기로 대응한다.
+ */
+const PF_KEY = 'etf-portfolio';
+const PF_VERSION = 1;
+const DEFAULT_PF = { version: PF_VERSION, holdings: {} };
+
+function loadPortfolio() {
+  if (typeof localStorage === 'undefined') return { ...DEFAULT_PF, holdings: {} };
+  try {
+    const raw = localStorage.getItem(PF_KEY);
+    if (!raw) return { ...DEFAULT_PF, holdings: {} };
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || !parsed.holdings || typeof parsed.holdings !== 'object') {
+      return { ...DEFAULT_PF, holdings: {} };
+    }
+    return { version: PF_VERSION, holdings: parsed.holdings };
+  } catch {
+    return { ...DEFAULT_PF, holdings: {} };
+  }
+}
+
+function savePortfolio(pf) {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(PF_KEY, JSON.stringify(pf));
+  } catch {
+    /* 프라이빗 모드 등 — 조용히 무시 */
+  }
+}
+
+function heldList(market) {
+  const pf = state.portfolio;
+  const bucket = pf && pf.holdings && pf.holdings[market];
+  return bucket ? Object.keys(bucket) : [];
+}
+
+function isHeld(market, code) {
+  return heldList(market).includes(code);
+}
+
+function toggleHold(market, code) {
+  if (!state.portfolio) state.portfolio = { version: PF_VERSION, holdings: {} };
+  if (!state.portfolio.holdings) state.portfolio.holdings = {};
+  if (!state.portfolio.holdings[market]) state.portfolio.holdings[market] = {};
+  const bucket = state.portfolio.holdings[market];
+  if (bucket[code]) {
+    delete bucket[code];
+  } else {
+    bucket[code] = { addedAt: new Date().toISOString().slice(0, 10) };
+  }
+  savePortfolio(state.portfolio);
+  render();
+}
+
+/* JSON 백업 — localStorage 는 기기별로 분리되므로 수동 백업이 필요하다 */
+function exportPortfolio() {
+  if (!state.portfolio) return;
+  const blob = new Blob([JSON.stringify(state.portfolio, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `etf-portfolio-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importPortfolio(text) {
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== 'object' || !parsed.holdings || typeof parsed.holdings !== 'object') {
+      return false;
+    }
+    state.portfolio = { version: PF_VERSION, holdings: parsed.holdings };
+    savePortfolio(state.portfolio);
+    render();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /* ------------------------------------------------------------------ 유틸 */
 const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) =>
@@ -54,6 +142,11 @@ const num = (v, d = 2) =>
   });
 
 const pct = (v, d = 1) => (v === null || v === undefined ? '—' : `${v >= 0 ? '+' : ''}${Number(v).toFixed(d)}%`);
+
+/* 검색어 정규화 — 대소문자 무시 + 공백 제거.
+   "KODEX 200" → "kodex200" */
+const normalizeQuery = (s) =>
+  String(s || '').toLowerCase().replace(/\s+/g, '');
 
 const fmtPrice = (v, cur) => {
   if (v === null || v === undefined) return '—';
@@ -209,6 +302,7 @@ function render() {
   renderBenchmark();
   renderFearGreedSummary();
   renderBuy(etfs);
+  renderHoldings();
   renderSell(etfs);
   renderAll(etfs);
   renderGuide();
@@ -438,6 +532,139 @@ function renderFearGreed() {
     </div>`;
 }
 
+/* ---------------- 내 보유종목 · 익절 타이밍 ---------------- */
+function renderHoldings() {
+  const d = state.data;
+  const listEl = $('hold-list');
+  const sumEl = $('hold-summary');
+  if (!d || !listEl) return;
+  const market = state.market;
+  const codes = heldList(market);
+  const exitLine = state.exitRsi;
+  const stop = state.stopPct === 'none' ? null : Number(state.stopPct);
+
+  // 요약
+  if (sumEl) {
+    if (!codes.length) {
+      sumEl.innerHTML = '';
+    } else {
+      const byMkt = Object.keys(state.portfolio.holdings || {}).filter(
+        (m) => Object.keys(state.portfolio.holdings[m] || {}).length
+      );
+      const withSignal = codes.filter((c) => {
+        const e = d.etfs.find((x) => x.code === c);
+        return e && e.signal.raw_pass;
+      }).length;
+      sumEl.innerHTML = `<div class="hold-summary">
+        <span>보유 <b>${codes.length}종목</b></span>
+        <span class="mute">· ${byMkt.map((m) => (m === 'kr' ? '한국' : '미국') + ' ' + Object.keys(state.portfolio.holdings[m]).length).join(' · ')}</span>
+        ${withSignal ? `<span class="pill p">지금 매수 신호 ${withSignal}개</span>` : ''}
+      </div>`;
+    }
+  }
+
+  if (!codes.length) {
+    listEl.innerHTML = `<div class="empty">보유종목이 없습니다.<br>
+      <b>전체 목록</b> 탭에서 각 행의 <b>+ 보유</b> 버튼으로 추가하세요.</div>`;
+    return;
+  }
+
+  // 보유 종목별 카드
+  const cards = codes.map((code) => {
+    const e = d.etfs.find((x) => x.code === code);
+    if (!e) {
+      return `<div class="sig">
+        <div class="sig-top">
+          <span class="sig-code">${esc(code)}</span>
+          <span class="sig-name">시세를 찾을 수 없는 종목</span>
+        </div>
+        <div class="sig-warn">이 종목의 시세 데이터가 없습니다. 유니버스에서 제외되었을 수 있습니다.
+          아래 '제거' 로 정리하세요.</div>
+        <div class="sig-foot">
+          <button class="pf-remove" data-hold-code="${esc(code)}" data-hold-mkt="${esc(market)}">제거</button>
+        </div>
+      </div>`;
+    }
+
+    const rsi = e.rsi ?? 0;
+    const lowPct = e.from_low_pct;
+    const highPct = e.from_high_pct;
+    // 게이지: RSI 30~80 구간을 0~100%로
+    const pctPos = Math.max(0, Math.min(100, ((rsi - 30) / 50) * 100));
+    const hot = rsi >= exitLine;
+    const near = rsi >= exitLine - 10 && rsi < exitLine;
+    const fillCls = hot ? 'hot' : near ? 'near' : '';
+    const dist = exitLine - rsi;
+
+    const status = hot
+      ? '<span class="pill r">익절 도달</span>'
+      : near
+        ? '<span class="pill r">익절 임박</span>'
+        : '<span class="pill n">보유</span>';
+
+    // 저점 근접 유지 여부 (매수 조건: 저점+10% 이내)
+    const nearLow = lowPct !== null && lowPct <= 10;
+    const lowTag = nearLow
+      ? '<span class="pill p">저점 근처 유지</span>'
+      : lowPct !== null
+        ? `<span class="pill n">저점 +${lowPct.toFixed(1)}%</span>`
+        : '';
+
+    let stopLine = '';
+    if (stop !== null) {
+      const stopPrice = e.price / (1 + stop / 100);
+      const remain = ((e.price - stopPrice) / e.price) * 100;
+      stopLine = `손절가 ${fmtPrice(stopPrice, d.currency_label)} (${remain.toFixed(1)}% 아래)`;
+    } else {
+      stopLine = '손절 없음';
+    }
+
+    return `<div class="sig">
+      <div class="sig-top">
+        <span class="sig-code">${esc(e.code)}</span>
+        <span class="sig-name">${esc(e.name)}</span>
+        ${status}
+      </div>
+      <div class="sig-tags" style="margin-top:6px">
+        <span class="tag cat">${esc(e.category)}</span>
+        <span class="tag theme">${esc(e.theme)}</span>
+        ${lowTag}
+      </div>
+      <div class="sig-metrics" style="margin-top:9px">
+        <div class="metric">
+          <div class="k">현재가</div>
+          <div class="v">${fmtPrice(e.price, d.currency_label)}</div>
+        </div>
+        <div class="metric">
+          <div class="k">RSI(14주)</div>
+          <div class="v ${hot ? 'warn' : near ? 'warn' : ''}">${num(rsi, 1)}</div>
+        </div>
+        <div class="metric">
+          <div class="k">52주 저점 대비</div>
+          <div class="v ${nearLow ? 'pass' : ''}">${pct(lowPct)}</div>
+        </div>
+      </div>
+      <div class="gauge">
+        <span class="gauge-label">RSI ${num(rsi, 1)} → ${exitLine}</span>
+        <div class="gauge-bar"><div class="gauge-fill ${fillCls}" style="width:${pctPos.toFixed(1)}%"></div></div>
+      </div>
+      <div class="sig-extra">
+        ${hot
+          ? '익절 기준에 도달했습니다'
+          : `익절까지 RSI ${dist.toFixed(1)}pt`}
+        · 고점 대비 ${pct(highPct)}
+        · ${esc(stopLine)}
+      </div>
+      <div class="sig-foot">
+        <span class="sig-extra">${e.rsi_weekly_date ? esc(e.rsi_weekly_date) + ' 주 확정' : ''}</span>
+        <button class="pf-remove" data-hold-code="${esc(e.code)}" data-hold-mkt="${esc(market)}">제거</button>
+      </div>
+    </div>`;
+  });
+
+  listEl.innerHTML = cards.join('');
+}
+
 /* ---------------- 매수 ---------------- */
 function renderBuy(etfs) {
   const regime = state.data.regime;
@@ -641,7 +868,15 @@ function renderAll(etfs) {
   }
 
   const f = state.filters;
+  const q = normalizeQuery(f.search);
+  const hit = (e) =>
+    !q ||
+    normalizeQuery(e.code).includes(q) ||
+    normalizeQuery(e.name).includes(q) ||
+    normalizeQuery(e.theme).includes(q) ||
+    normalizeQuery(e.category).includes(q);
   let rows = etfs.filter((e) => {
+    if (!hit(e)) return false;
     if (f.cat && e.category !== f.cat) return false;
     if (f.state === 'regime' && !e.signal.regime_pass) return false;
     if (f.state === 'raw' && !e.signal.raw_pass) return false;
@@ -662,11 +897,17 @@ function renderAll(etfs) {
   }[f.sort];
   rows = rows.slice().sort((a, b) => key(a) - key(b));
 
-  $('all-count').textContent = `${rows.length}종목`;
+  $('all-count').textContent = q
+    ? `${rows.length} / ${etfs.length}종목`
+    : `${rows.length}종목`;
+  const empty = $('search-empty');
+  if (empty) {
+    empty.style.display = rows.length ? 'none' : '';
+  }
   $('all-table').innerHTML = `
     <thead><tr>
       <th>종목</th><th>카테고리</th><th>현재가</th><th>저점대비</th><th>RSI(14주)</th>
-      <th>고점대비</th><th>200일선</th><th>1년</th><th>이력</th><th>상태</th>
+      <th>고점대비</th><th>200일선</th><th>1년</th><th>이력</th><th>상태</th><th>보유</th>
     </tr></thead>
     <tbody>${rows
       .map(
@@ -687,6 +928,11 @@ function renderAll(etfs) {
             ? '<span class="pill r">원조건</span>'
             : '<span class="pill n">—</span>'
       }</td>
+      <td><button class="pf-add${isHeld(state.market, e.code) ? ' on' : ''}"
+        data-hold-code="${esc(e.code)}" data-hold-mkt="${esc(state.market)}"
+        aria-pressed="${isHeld(state.market, e.code)}">${
+          isHeld(state.market, e.code) ? '✓ 보유' : '+ 보유'
+        }</button></td>
     </tr>`
       )
       .join('')}</tbody>`;
@@ -1422,6 +1668,60 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   if (localStorage.getItem('etf-theme') === 'dark') document.body.classList.add('dark');
 
+  // 검색 — 한글 IME 조합 중에는 필터링하지 않는다.
+  // 조합 중에는 이벤트가 여러 번 오고 중간 문자열로 필터하면 지저분해진다.
+  let composing = false;
+  const searchEl = $('f-search');
+  if (searchEl) {
+    searchEl.addEventListener('compositionstart', () => { composing = true; });
+    searchEl.addEventListener('compositionend', (e) => {
+      composing = false;
+      state.filters.search = e.target.value;
+      renderAll(state.data.etfs);
+    });
+    searchEl.addEventListener('input', (e) => {
+      if (composing) return;
+      state.filters.search = e.target.value;
+      renderAll(state.data.etfs);
+    });
+  }
+  const searchReset = $('search-reset');
+  if (searchReset) {
+    searchReset.addEventListener('click', () => {
+      state.filters = { ...state.filters, cat: '', sort: 'signal', state: '', depth: '', depthAll: '', search: '' };
+      if (searchEl) searchEl.value = '';
+      renderAll(state.data.etfs);
+    });
+  }
+
+  // 보유 추가/제거 — 목록 행의 + 보유, 익절 탭 카드의 제거
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-hold-code]');
+    if (!btn) return;
+    e.preventDefault();
+    toggleHold(btn.dataset.holdMkt, btn.dataset.holdCode);
+  });
+
+  // 포트폴리오 백업
+  const pfExport = $('pf-export');
+  if (pfExport) pfExport.addEventListener('click', exportPortfolio);
+  const pfImport = $('pf-import');
+  const pfFile = $('pf-file');
+  if (pfImport && pfFile) {
+    pfImport.addEventListener('click', () => pfFile.click());
+    pfFile.addEventListener('change', () => {
+      const file = pfFile.files && pfFile.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const ok = importPortfolio(String(reader.result || ''));
+        alert(ok ? '포트폴리오를 불러왔습니다.' : '형식이 올바르지 않습니다.');
+        pfFile.value = '';
+      };
+      reader.readAsText(file);
+    });
+  }
+
   $('f-cat').addEventListener('change', (e) => {
     state.filters.cat = e.target.value;
     renderAll(state.data.etfs);
@@ -1459,6 +1759,7 @@ document.addEventListener('DOMContentLoaded', () => {
     renderSell(state.data.etfs);
   });
 
+  state.portfolio = loadPortfolio();
   loadBacktest();
   loadMarket('us');
 });
