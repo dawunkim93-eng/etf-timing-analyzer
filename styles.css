@@ -322,3 +322,31 @@ body.dark .search-input{background:var(--dk2)}
 .hold-summary b{font-weight:800;color:var(--ink);font-size:.9rem}
 .hold-summary .mute{color:var(--ink3);font-size:.76rem}
 .tabular-nums{font-variant-numeric:tabular-nums}
+
+/* ---------- 가로 스크롤 시 첫 열(종목명) 고정 ----------
+ * td/th 에 background 가 없으면 지나가는 내용이 비쳐 보인다 → 배경 필수.
+ * 왼쪽 고정 경계는 box-shadow 로 표시한다.
+ * 첫 열 폭을 고정해야 — 이름이 길어져 첫 열이 커지면
+ * 스크롤량이 오히려 늘어나기 때문이다.
+ */
+.table-wrap table th:first-child,
+.table-wrap table td:first-child{
+  position:sticky;
+  left:0;
+  z-index:2;
+  background:var(--card);
+  box-shadow:1px 0 0 var(--line);
+  width:168px;
+  min-width:168px;
+  max-width:168px;
+}
+.table-wrap table thead th:first-child{z-index:3}
+
+/* 종목명은 열 폭 안에서 ellipsis. 전체명은 td 의 title 속성으로 노출한다. */
+#all-table tbody td:first-child .mute{
+  display:inline-block;
+  max-width:118px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  vertical-align:middle;
+}

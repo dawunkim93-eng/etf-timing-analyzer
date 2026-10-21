@@ -928,7 +928,7 @@ function renderAll(etfs) {
     <tbody>${rows
       .map(
         (e) => `<tr>
-      <td><span class="c">${esc(e.code)}</span> <span class="mute">${esc(e.name.slice(0, 14))}</span></td>
+      <td title="${esc(e.name)}"><span class="c">${esc(e.code)}</span> <span class="mute">${esc(e.name)}</span></td>
       <td class="mute">${esc(e.category)}</td>
       <td>${fmtPrice(e.price, state.data.currency_label)}</td>
       <td class="${e.from_low_pct <= 10 ? 'pos' : ''}">${pct(e.from_low_pct)}</td>
