@@ -143,6 +143,16 @@ const num = (v, d = 2) =>
 
 const pct = (v, d = 1) => (v === null || v === undefined ? '—' : `${v >= 0 ? '+' : ''}${Number(v).toFixed(d)}%`);
 
+/* 매수 조건에서 얼마나 벗어났는지. 작을수록 조건에 가깝다.
+   '신호 우선' 정렬에서 그룹3(미충족) 내부 정렬 기준.
+   그룹1·2(충족)는 저점 근접순을 쓰고, 그룹3 는 이 값으로 정렬해
+   '저점에 가까운 순' 이 매수 후보처럼 읽히는 걸 막는다. */
+function signalDeficit(e) {
+  const rsiDef = Math.max(0, (e.rsi ?? 100) - 50);         // RSI 50 초과분
+  const lowDef = Math.max(0, (e.from_low_pct ?? 999) - 10);  // 저점 10% 초과분
+  return rsiDef + lowDef;
+}
+
 /* 검색어 정규화 — 대소문자 무시 + 공백 제거.
    "KODEX 200" → "kodex200" */
 const normalizeQuery = (s) =>
@@ -886,7 +896,13 @@ function renderAll(etfs) {
   });
 
   const key = {
-    signal: (e) => (e.signal.regime_pass ? 0 : e.signal.raw_pass ? 1 : 2) * 1000 + (e.from_low_pct ?? 999),
+    // 그룹 1·2 (신호 충족) → 저점 근접순 (막 반등한 종목이 진입 대상)
+    // 그룹 3 (미충족)     → 조건 부족분 순 (조건에 가까운 것부터)
+    signal: (e) => {
+      const grp = e.signal.regime_pass ? 0 : e.signal.raw_pass ? 1 : 2;
+      const sub = grp === 2 ? signalDeficit(e) : (e.from_low_pct ?? 999);
+      return grp * 1000 + sub;
+    },
     low: (e) => e.from_low_pct ?? 999,
     rsi: (e) => e.rsi ?? 999,
     low52: (e) => -(e.from_low_pct ?? -999),

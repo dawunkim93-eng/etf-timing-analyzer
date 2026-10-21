@@ -180,12 +180,12 @@
           <option value="">전체 카테고리</option>
         </select>
         <select id="f-sort">
-          <option value="signal">신호 우선</option>
-          <option value="low">52주 저점 근접순</option>
+          <option value="signal">신호 우선 (충족 → 부족분)</option>
+          <option value="low">저점 가장 가까운순</option>
           <option value="rsi">RSI 낮은순</option>
-          <option value="low52">저점대비 높은순</option>
-          <option value="ret12">1년 수익률</option>
-          <option value="ma200">200일선 이격</option>
+          <option value="low52">저점에서 많이 오른순</option>
+          <option value="ret12">1년 수익률 높은순</option>
+          <option value="ma200">200일선 위 강한순</option>
           <option value="depth">낙폭 깊은순 (고점 대비)</option>
           <option value="depth_shallow">낙폭 얕은순 (고점 대비)</option>
         </select>
@@ -344,6 +344,6 @@
   <button data-tab="guide"><span>설명서</span></button>
 </nav>
 
-<script src="app.js?v=c230c037"></script>
+<script src="app.js?v=65a28b8e"></script>
 </body>
 </html>
