@@ -491,12 +491,15 @@ function signalCard(e, isRegime) {
   );
 
   const unverified = e.signal?.verified === false;
+  // 커버드콜은 옵션 기반 수익 전략 — 52주 저점 기준이 지수가 아니라 전략 NAV 저점
+  const isCoveredCall = e.theme === '커버드콜';
   return `<div class="sig">
     <div class="sig-top">
       <span class="sig-code">${esc(e.code)}</span>
       <span class="sig-name">${esc(e.name)}</span>
     </div>
     <div class="sig-tags" style="margin-top:6px">${tags.join('')}</div>
+    ${isCoveredCall ? '<div class="sig-warn">옵션 기반 수익 전략 — 52주 저점 기준이 지수가 아니라 이 ETF의 NAV 저점입니다. 상승 참여도가 낮습니다</div>' : ''}
     ${unverified ? '<div class="sig-warn">이력 52주 미만 — 저점 기준이 "가용 이력 전체"이며 백테스트로 검증되지 않았습니다</div>' : ''}
     <div class="sig-metrics four">
       <div class="metric">
