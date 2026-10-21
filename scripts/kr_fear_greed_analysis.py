@@ -23,7 +23,7 @@ import datetime as dt
 import json
 import statistics
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -255,11 +255,19 @@ def kr_analysis(kr_hist: dict[str, list[dict]], fg_hist: dict[str, float],
             "win_pct": round(len([x for x in rets if x > 0]) / len(rets) * 100, 1) if rets else None,
         })
 
+    # 표본 편향 점검 — 특정 연도에 몰려 있으면 지수 하나가 결과를 좌우한다
+    yearly = Counter(d[:4] for d, _ in pairs)
+    top_year, top_n = (yearly.most_common(1) or [("?", 0)])[0]
+    concentration = round(top_n / len(pairs) * 100, 1) if pairs else 0.0
+
     return {
         "buckets": buckets,
         "corr": corr,
         "n_days": len(fg_hist),
         "signal_days": len(pairs),
+        "yearly_signal_days": dict(sorted(yearly.items())),
+        "top_year": top_year,
+        "top_year_concentration_pct": concentration,
         "fwd_days": FWD_DAYS,
         "source": "GitHub kospi-feargreedindex (2022-03~, 배치 갱신)",
         "caveats": [
@@ -270,6 +278,8 @@ def kr_analysis(kr_hist: dict[str, list[dict]], fg_hist: dict[str, float],
             "점수가 낮을수록 매수 신호가 많다 = 음의 상관.",
             "표본 1087포인트는 2022-03 이후 한국 시장 1회차만 포함한다. "
             "구조적 변화(부동산 정책, 반도체 사이클 등)가 섞여 있다.",
+            "극단적 공포 구간 표본이 2022년 하락장에 몰려 있다(48일 중 44%). "
+            "이 구간의 수치는 2022년의 결과를 크게 반영한다.",
         ],
     }
 
@@ -303,6 +313,7 @@ def main() -> None:
     for b in result["buckets"]:
         print(f"    {b['label_ko']:12s} n={b['n_days']:4d} 신호 {b['avg_signals']}개 "
               f"KOSPI 21일 {b['avg_21d_kospi_pct']:+.2f}% 승률 {b['win_pct']}%")
+    print(f"  표본 집중도: {result['top_year']}년 {result['top_year_concentration_pct']}%")
 
 
 if __name__ == "__main__":

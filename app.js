@@ -300,6 +300,9 @@ function renderFearGreedSummary() {
         <p>한국 공포·탐욕 점수와 한국 ETF 매수 신호수의 상관계수는
         <b>${kr.corr !== null && kr.corr !== undefined ? kr.corr : '—'}</b>다.
         (점수가 낮을수록 — 즉 공포가 클수록 — 매수 신호가 많다.)</p>
+        <div class="warnp">극단적 공포 구간 표본(${kSweet ? kSweet.n_days : '—'}일)은
+        <b>2022년 하락장에 44%가 몰려 있다.</b> 이 구간의 수치는 2022년의 결과를
+        크게 반영하므로 한 해의 Special situation 일 수 있다.</div>
         <p><button class="link-btn" data-goto="verify">검증 탭에서 자세히 ›</button></p>
       </div>`;
     return;
