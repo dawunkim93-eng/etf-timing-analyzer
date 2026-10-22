@@ -13,7 +13,7 @@ const state = {
   fearGreed: null,
   exitRsi: 60,
   stopPct: 15,
-  filters: { cat: '', sort: 'signal', state: '', depth: '', depthAll: '', search: '' },
+  filters: { cat: '', sort: 'signal', state: '', depth: '', depthAll: '', search: '', theme: '' },
 };
 
 /* 낙폭 버킷 라벨 — universe.py 의 DEPTH_BUCKETS 와 같은 순서 */
@@ -307,6 +307,7 @@ function render() {
     rEl.innerHTML = '<div class="empty">벤치마크를 못 불러와 국면을 판정하지 못했습니다.</div>';
   }
 
+  fillThemeOptions(etfs);
   renderMarketSummary();
   renderFearGreed();
   renderBenchmark();
@@ -316,6 +317,28 @@ function render() {
   renderSell(etfs);
   renderAll(etfs);
   renderGuide();
+}
+
+/* 테마 필터 옵션 — 현재 시장 데이터에서 동적으로 만든다.
+   하드코딩하면 시장 전환 시 목록이 어긋난다.
+   테마는 카테고리와 독립이다 (한국 '방산' 은 테마 와 해외지수 양쪽에 있다). */
+function fillThemeOptions(etfs) {
+  const sel = $('f-theme');
+  if (!sel) return;
+  const counts = {};
+  for (const e of etfs) counts[e.theme] = (counts[e.theme] || 0) + 1;
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">테마 전체</option>';
+  Object.entries(counts)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ko'))
+    .forEach(([theme, n]) => {
+      const o = document.createElement('option');
+      o.value = theme;
+      o.textContent = `${theme} (${n})`;
+      sel.appendChild(o);
+    });
+  if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
+  else state.filters.theme = '';
 }
 
 /* ---------------- 시장 맥락 요약 (매수 탭 상단 배지) ---------------- */
@@ -632,7 +655,7 @@ function renderHoldings() {
     return `<div class="sig">
       <div class="sig-top">
         <span class="sig-code">${esc(e.code)}</span>
-        <span class="sig-name">${esc(e.name)}</span>
+        <span class="sig-name">${esc(e.label || e.name)}</span>
         ${status}
       </div>
       ${officialLine(e)}
@@ -677,10 +700,11 @@ function renderHoldings() {
 }
 
 
-/* 실명칭(발행사 포함) — 라벨과 다를 때만 아래 줄로 보여준다.
-   표에서는 길어서 못 쓰지만 카드에는 여유가 있다. */
+/* 실명칭(발행사 포함) — 카드 제목(한국어 라벨) 아래 2번째 줄로 보여준다.
+   표에서는 길어서 못 쓰지만 카드에는 여유가 있다.
+   카드는 항상 한국어 라벨을 제목으로 쓰고, 실명칭은 보조로 붙인다. */
 const officialLine = (e) =>
-  e.official_name && e.official_name !== e.name
+  e.official_name && e.official_name !== (e.label || e.name)
     ? `<span class="sig-sub">${esc(e.official_name)}</span>`
     : '';
 
@@ -742,7 +766,7 @@ function signalCard(e, isRegime) {
   return `<div class="sig">
     <div class="sig-top">
       <span class="sig-code">${esc(e.code)}</span>
-      <span class="sig-name">${esc(e.name)}</span>
+      <span class="sig-name">${esc(e.label || e.name)}</span>
     </div>
     ${officialLine(e)}
     <div class="sig-tags" style="margin-top:6px">${tags.join('')}</div>
@@ -817,7 +841,7 @@ function renderSell(etfs) {
       return `<div class="sig">
         <div class="sig-top">
           <span class="sig-code">${esc(e.code)}</span>
-          <span class="sig-name">${esc(e.name)}</span>
+          <span class="sig-name">${esc(e.label || e.name)}</span>
           ${statusPill}
         </div>
         ${officialLine(e)}
@@ -889,16 +913,20 @@ function renderAll(etfs) {
   }
 
   const f = state.filters;
-  const q = normalizeQuery(f.search);
+  // B 방식 — 테마 필터를 고르면 검색어는 무시한다.
+  // 서로 다른 축을 동시에 좁히면 결과가 0건이 되어 답답하다.
+  const q = f.theme ? '' : normalizeQuery(f.search);
   const hit = (e) =>
     !q ||
     normalizeQuery(e.code).includes(q) ||
-    normalizeQuery(e.name).includes(q) ||
+    normalizeQuery(e.label || e.name).includes(q) ||   // 한국어 라벨
+    normalizeQuery(e.name).includes(q) ||              // 영문 실명칭
     normalizeQuery(e.official_name || '').includes(q) ||
     normalizeQuery(e.theme).includes(q) ||
     normalizeQuery(e.category).includes(q);
   let rows = etfs.filter((e) => {
     if (!hit(e)) return false;
+    if (f.theme && e.theme !== f.theme) return false;
     if (f.cat && e.category !== f.cat) return false;
     if (f.state === 'regime' && !e.signal.regime_pass) return false;
     if (f.state === 'raw' && !e.signal.raw_pass) return false;
@@ -1710,14 +1738,36 @@ document.addEventListener('DOMContentLoaded', () => {
     searchEl.addEventListener('input', (e) => {
       if (composing) return;
       state.filters.search = e.target.value;
+      // B 방식 — 검색하면 테마 필터를 해제한다 (둘 다 좁히면 0건)
+      if (e.target.value && state.filters.theme) {
+        state.filters.theme = '';
+        const ts = $('f-theme');
+        if (ts) ts.value = '';
+      }
       renderAll(state.data.etfs);
     });
   }
+  // 테마 필터 — 선택하면 검색어를 비운다 (B 방식)
+  const themeSel = $('f-theme');
+  if (themeSel) {
+    themeSel.addEventListener('change', (e) => {
+      state.filters.theme = e.target.value;
+      if (e.target.value) {
+        state.filters.search = '';
+        const se = $('f-search');
+        if (se) se.value = '';
+      }
+      renderAll(state.data.etfs);
+    });
+  }
+
   const searchReset = $('search-reset');
   if (searchReset) {
     searchReset.addEventListener('click', () => {
-      state.filters = { ...state.filters, cat: '', sort: 'signal', state: '', depth: '', depthAll: '', search: '' };
+      state.filters = { ...state.filters, cat: '', sort: 'signal', state: '', depth: '', depthAll: '', search: '', theme: '' };
       if (searchEl) searchEl.value = '';
+      const themeReset = $('f-theme');
+      if (themeReset) themeReset.value = '';
       renderAll(state.data.etfs);
     });
   }

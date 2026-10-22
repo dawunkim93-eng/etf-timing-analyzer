@@ -336,9 +336,9 @@ body.dark .search-input{background:var(--dk2)}
   z-index:2;
   background:var(--card);
   box-shadow:1px 0 0 var(--line);
-  width:168px;
-  min-width:168px;
-  max-width:168px;
+  width:238px;
+  min-width:238px;
+  max-width:238px;
 }
 .table-wrap table thead th:first-child{z-index:3}
 
@@ -348,7 +348,7 @@ body.dark .search-input{background:var(--dk2)}
    폭을 고정하면 이름이 길어도 첫 열 폭이 안 늘어나므로 스크롤량이 유지된다. */
 #all-table tbody td:first-child .mute{
   display:inline-block;
-  width:150px;
+  width:220px;
   white-space:normal;
   vertical-align:middle;
 }

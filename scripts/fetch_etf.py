@@ -805,11 +805,15 @@ def collect_market(market: str, session) -> dict:
         # 발행사 법인명까지 붙고 띄쓰기가 깨진다 → 한국은 기존 한글 이름 유지.
         yahoo_name = (raw or {}).get("meta_long_name")
         official = yahoo_name if (market == "us" and yahoo_name) else name
+        # name    : 화면 표시용. 미국은 영문 실명칭, 한국은 한글 종목명.
+        # label   : 한국어 라벨. 정렬·검색은 이 값을 쓴다 (영문이면 자연어를 잃는다).
+        # official_name : 실명칭. hover(title) 과 카드 2번째 줄에 쓴다.
         row = {
             "code": code,
             "ticker": code,
             "yahoo": t,
-            "name": name,
+            "name": official if market == "us" else name,
+            "label": name,
             "official_name": official,
             "category": category,
             "theme": theme,
