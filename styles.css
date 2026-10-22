@@ -336,19 +336,42 @@ body.dark .search-input{background:var(--dk2)}
   z-index:2;
   background:var(--card);
   box-shadow:1px 0 0 var(--line);
-  width:238px;
-  min-width:238px;
-  max-width:238px;
 }
 .table-wrap table thead th:first-child{z-index:3}
 
-/* 종목명 2줄 허용.
-   line-clamp 대신 wrap 을 쓴다 — line-clamp 는 display 를 바꿔야 해서
-   우선순위·높이 계산이 꼬여서 실제로는 안 먹는다.
-   폭을 고정하면 이름이 길어도 첫 열 폭이 안 늘어나므로 스크롤량이 유지된다. */
-#all-table tbody td:first-child .mute{
+/* 고정 열 폭은 시장별로 다르게 한다.
+   너무 넓으면 화면을 먹어서 오른쪽 숫자를 볼 수 없다.
+   실측(390px): 238px 고정 → 숫자 컬럼 3개만 보임 / 130px → 5개 보임.
+   이름 길이도 시장마다 다르다 (미국 최대 8자, 한국 최대 23자). */
+
+/* 미국 — 라벨이 짧다(최대 8자) → 1줄 */
+#all-table.mkt-us th:first-child,
+#all-table.mkt-us td:first-child{
+  width:130px;
+  min-width:130px;
+  max-width:130px;
+}
+#all-table.mkt-us tbody td:first-child .mute{
   display:inline-block;
-  width:220px;
+  width:96px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  vertical-align:middle;
+}
+
+/* 한국 — 라벨이 길다(최대 23자) → 2줄 허용.
+   line-clamp 대신 wrap. line-clamp 는 display 를 바꿔야 해서
+   우선순위·높이 계산이 꼬여서 실제로는 안 먹는다. */
+#all-table.mkt-kr th:first-child,
+#all-table.mkt-kr td:first-child{
+  width:150px;
+  min-width:150px;
+  max-width:150px;
+}
+#all-table.mkt-kr tbody td:first-child .mute{
+  display:inline-block;
+  width:116px;
   white-space:normal;
   vertical-align:middle;
 }

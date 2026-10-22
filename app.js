@@ -960,6 +960,8 @@ function renderAll(etfs) {
   if (empty) {
     empty.style.display = rows.length ? 'none' : '';
   }
+  // 시장별 클래스를 붙여 고정 열 폭을 분기한다 (CSS 에서 mkt-us / mkt-kr)
+  $('all-table').className = `mkt-${state.market}`;
   $('all-table').innerHTML = `
     <thead><tr>
       <th>종목</th><th>카테고리</th><th>현재가</th><th>저점대비</th><th>RSI(14주)</th>
@@ -968,7 +970,7 @@ function renderAll(etfs) {
     <tbody>${rows
       .map(
         (e) => `<tr>
-      <td title="${esc(e.official_name || e.name)}"><span class="c">${esc(e.code)}</span> <span class="mute">${esc(e.name)}</span></td>
+      <td title="${esc(e.official_name || e.label || e.name)}"><span class="c">${esc(e.code)}</span> <span class="mute">${esc(e.label || e.name)}</span></td>
       <td class="mute">${esc(e.category)}</td>
       <td>${fmtPrice(e.price, state.data.currency_label)}</td>
       <td class="${e.from_low_pct <= 10 ? 'pos' : ''}">${pct(e.from_low_pct)}</td>
