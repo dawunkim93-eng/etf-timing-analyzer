@@ -417,6 +417,73 @@ body.dark .search-input{background:var(--dk2)}
 /* 좌상단 코너 셀 (가로 고정 열 × 세로 고정 헤더) — 둘보다 위에 */
 #all-table thead th:first-child{ z-index:4 }
 
+/* ---------- 전체 목록은 가로 고정 열을 쓰지 않는다 ----------
+   고정 열(150px)이 헤더 제목(첫 행)을 덮어 다른 열 이름이 안 보였다.
+   실측: 가로 스크롤 100px 에서 '카테고리' 100% 가림, '현재가' 62% 잘림.
+   고정 열과 헤더 제목은 구조적으로 양립 불가 — 어느 쪽을 포기할지 고르면 된다.
+   여기서는 '고정 열'을 포기하고 11개 제목을 전부 보이게 한다. */
+#all-table thead th:first-child{
+  left:auto;                                   /* 세로 고정(헤더)만 유지 */
+  box-shadow:inset 0 -1px 0 var(--line);      /* 구분선은 유지 (고정열 그림자와 다르다) */
+}
+#all-table tbody td:first-child{
+  position:static;                            /* 가로 고정 해제 */
+  box-shadow:none;                            /* 고정 열 경계 그림자 제거 */
+}
+
+/* ---------- 전체 목록 탭: 앱형 고정 레이아웃 ----------
+   페이지가 아니라 표가 스크롤된다.
+   표 박스가 페이지 스크롤에 따라 움직이면 "표 안에서 자유롭게 움직인다"는
+   감각이 생기고, 스크롤 위치가 헷갈린다.
+   → 페이지 스크롤을 0 으로 만들고, 표 박스가 남은 높이를 꽉 채운다.
+   ★ body[data-tab] 훅은 app.js 의 switchTab() 이 설정한다.
+     (CSS :has() 대신 명시적 훅 — 지원 브라우저 의존 없애기) */
+body[data-tab=all]{
+  height:100dvh;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  padding-bottom:max(16px, env(safe-area-inset-bottom));
+}
+body[data-tab=all] > .top,
+body[data-tab=all] .statusbar,
+body[data-tab=all] .tabs,
+body[data-tab=all] .hero{ flex:none }
+
+/* 히어로를 한 줄 정보바로 — kicker + 국면 배지만 남긴다 */
+body[data-tab=all] .hero{ padding:9px 16px }
+body[data-tab=all] .hero .wrap{ display:flex; align-items:center; gap:10px }
+body[data-tab=all] .hero h2,
+body[data-tab=all] .hero p{ display:none }
+body[data-tab=all] .hero .regime-line{ margin-bottom:0 }
+
+/* 탭 패널이 남은 높이를 채우고 → 표 카드가 그만큼 커진다 */
+body[data-tab=all] .tabpane.on{
+  flex:1;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+body[data-tab=all] .tabpane.on > .card{ flex:none }
+body[data-tab=all] .tabpane.on > .table-card{
+  flex:1;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+}
+body[data-tab=all] .table-scroll{
+  flex:1;
+  min-height:0;
+  max-height:none;      /* 위 max-height 규칙 덮어쓰기 — 높이는 flex 가 정한다 */
+  overflow:auto;
+}
+
+/* 필터 5행 → 3행 (줄바꿈) — 표에 더 많은 줄을 준다 */
+#tab-all .card:first-child .card-b{ display:flex; flex-wrap:wrap; gap:8px 6px }
+#tab-all .card:first-child .card-b > .row{ margin:0; flex:0 1 auto }
+#tab-all .card:first-child .card-b > .row:first-child{ flex:1 0 100% }
+
 /* 카드에 표시하는 실명칭 (발행사 포함) — 라벨 아래 작은 글씨 */
 .sig-sub{display:block;font-size:.68rem;color:var(--ink3);line-height:1.45;
   margin-top:2px;word-break:break-word}

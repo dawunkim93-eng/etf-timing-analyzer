@@ -1697,10 +1697,16 @@ function switchTab(tab) {
   document.querySelectorAll('.tabpane').forEach((p) => p.classList.toggle('on', p.id === `tab-${tab}`));
   document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
   document.querySelectorAll('.nav button').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+  // CSS 훅 — 전체 목록 탭만 "앱형 고정 레이아웃" (표가 화면에 고정) 을 쓴다
+  document.body.dataset.tab = tab;
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  // 초기 탭을 body 에 표시 (CSS 훅)
+  const initTab = (document.querySelector('.tabpane.on') || {}).id || 'tab-buy';
+  document.body.dataset.tab = initTab.replace('tab-', '');
+
   document.querySelectorAll('[data-tab]').forEach((b) =>
     b.addEventListener('click', () => switchTab(b.dataset.tab))
   );
