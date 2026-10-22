@@ -8,10 +8,12 @@
   --hold-bg:#ececea; --hold-ink:#6b6b66;
   --none-bg:#f0efec; --none-ink:#8a8a84;
   --neg:#c4472e; --pos:#4c8f3a;
+  --fc-shadow:rgba(0,0,0,.16);   /* 고정 열 경계 그림자 */
   --warn-bg:#fff8e6; --warn-line:#f0d79a; --warn-ink:#8a5a12; --warn-ink2:#6b4409;
 }
 body.dark{
   --bg:#131416;--ink:#f0efeb;--ink2:#a8a8a2;--ink3:#75756f;--card:#1c1d20;--line:#2a2b2f;
+  --fc-shadow:rgba(0,0,0,.75);
   --buy-bg:#26301f;--buy-ink:#c6d9a3;--sell-bg:#332a14;--sell-ink:#e0c47c;
   --hold-bg:#26272b;--hold-ink:#a8a8a2;--none-bg:#242528;--none-ink:#7d7d78;
   --orange-soft:#3a2517;
@@ -335,7 +337,9 @@ body.dark .search-input{background:var(--dk2)}
   left:0;
   z-index:2;
   background:var(--card);
-  box-shadow:1px 0 0 var(--line);
+  /* 고정 열 경계 = 가는 선 + 부드러운 그림자.
+     "여기까지는 고정" 이라는 신호. 가로로 스크롤할 때 시선이 안다. */
+  box-shadow:6px 0 10px -7px var(--fc-shadow), 1px 0 0 var(--line);
 }
 .table-wrap table thead th:first-child{z-index:3}
 
@@ -385,104 +389,16 @@ body.dark .search-input{background:var(--dk2)}
 #all-table tbody td:first-child .c{ flex:0 0 auto }   /* 티커는 절대 줄이지 않는다 */
 #all-table tbody td:first-child .mute{ flex:1 1 auto; min-width:0; width:auto }
 
-/* ---------- 세로 스크롤 + 헤더(첫 행) 고정 ----------
-   .table-wrap 은 overflow-x:auto 라서 overflow-y 도 auto 로 계산된다
-   (CSS 규칙: 한 축이 visible 이 아니면 다른 축도 visible 유지 불가).
-   → thead 의 sticky 기준점이 페이지가 아니라 .table-wrap 이 되고,
-     박스 높이가 auto 면 세로로 스크롤이 안 돼서 top:auto 로 무력화된다.
-   그래서 박스에 max-height 를 주고 세로 스크롤을 만든 뒤
-   thead 를 박스 상단에 붙인다.
-   ★ max-height = 100vh - 150px
-     박스 아래 여백(89px = 카드 padding-bottom 16 + margin 12 + body padding-bottom 76 등)
-     만큼 빼면, 페이지 최대 스크롤 시 박스 상단이 항상 61px 에 고정된다.
-     → 상단바(55px) 에 가려지지 않는다. (844/667/568px 뷰포트 전부 실측) */
-.table-scroll{
-  max-height:calc(100vh - 150px);
-  max-height:calc(100dvh - 150px);   /* 모바일 주소창 높이 변화 대응 */
-  overflow:auto;
-}
-
-/* 헤더 고정.
-   ★ border-collapse:collapse + sticky th 조합에서 Chrome 은
-     th 의 border-bottom 을 헤더 상단에 잘못 그린다(실측 670px).
-     헤더 아래 구분선이 사라지므로 border 를 빼고 안쪽 그림자로 그린다. */
-#all-table thead th{
-  position:sticky;
-  top:0;
-  z-index:2;
-  background:var(--card);
-  border-bottom:none;
-  box-shadow:inset 0 -1px 0 var(--line);
-}
-/* 좌상단 코너 셀 (가로 고정 열 × 세로 고정 헤더) — 둘보다 위에 */
-#all-table thead th:first-child{ z-index:4 }
-
-/* ---------- 전체 목록은 가로 고정 열을 쓰지 않는다 ----------
-   고정 열(150px)이 헤더 제목(첫 행)을 덮어 다른 열 이름이 안 보였다.
-   실측: 가로 스크롤 100px 에서 '카테고리' 100% 가림, '현재가' 62% 잘림.
-   고정 열과 헤더 제목은 구조적으로 양립 불가 — 어느 쪽을 포기할지 고르면 된다.
-   여기서는 '고정 열'을 포기하고 11개 제목을 전부 보이게 한다. */
-#all-table thead th:first-child{
-  left:auto;                                   /* 세로 고정(헤더)만 유지 */
-  box-shadow:inset 0 -1px 0 var(--line);      /* 구분선은 유지 (고정열 그림자와 다르다) */
-}
-#all-table tbody td:first-child{
-  position:static;                            /* 가로 고정 해제 */
-  box-shadow:none;                            /* 고정 열 경계 그림자 제거 */
-}
-
-/* ---------- 전체 목록 탭: 앱형 고정 레이아웃 ----------
-   페이지가 아니라 표가 스크롤된다.
-   표 박스가 페이지 스크롤에 따라 움직이면 "표 안에서 자유롭게 움직인다"는
-   감각이 생기고, 스크롤 위치가 헷갈린다.
-   → 페이지 스크롤을 0 으로 만들고, 표 박스가 남은 높이를 꽉 채운다.
-   ★ body[data-tab] 훅은 app.js 의 switchTab() 이 설정한다.
-     (CSS :has() 대신 명시적 훅 — 지원 브라우저 의존 없애기) */
-body[data-tab=all]{
-  height:100dvh;
-  overflow:hidden;
-  display:flex;
-  flex-direction:column;
-  padding-bottom:max(16px, env(safe-area-inset-bottom));
-}
-body[data-tab=all] > .top,
-body[data-tab=all] .statusbar,
-body[data-tab=all] .tabs,
-body[data-tab=all] .hero{ flex:none }
-
-/* 히어로를 한 줄 정보바로 — kicker + 국면 배지만 남긴다 */
-body[data-tab=all] .hero{ padding:9px 16px }
-body[data-tab=all] .hero .wrap{ display:flex; align-items:center; gap:10px }
-body[data-tab=all] .hero h2,
-body[data-tab=all] .hero p{ display:none }
-body[data-tab=all] .hero .regime-line{ margin-bottom:0 }
-
-/* 탭 패널이 남은 높이를 채우고 → 표 카드가 그만큼 커진다 */
-body[data-tab=all] .tabpane.on{
-  flex:1;
-  min-height:0;
-  display:flex;
-  flex-direction:column;
-  overflow:hidden;
-}
-body[data-tab=all] .tabpane.on > .card{ flex:none }
-body[data-tab=all] .tabpane.on > .table-card{
-  flex:1;
-  min-height:0;
-  display:flex;
-  flex-direction:column;
-}
-body[data-tab=all] .table-scroll{
-  flex:1;
-  min-height:0;
-  max-height:none;      /* 위 max-height 규칙 덮어쓰기 — 높이는 flex 가 정한다 */
-  overflow:auto;
-}
-
-/* 필터 5행 → 3행 (줄바꿈) — 표에 더 많은 줄을 준다 */
-#tab-all .card:first-child .card-b{ display:flex; flex-wrap:wrap; gap:8px 6px }
-#tab-all .card:first-child .card-b > .row{ margin:0; flex:0 1 auto }
-#tab-all .card:first-child .card-b > .row:first-child{ flex:1 0 100% }
+/* ★ 헤더(첫 행)를 화면에 고정할 수 없는 이유 ★
+   전체 목록은 11열이라 가로 스크롤이 필수다.
+   가로 스크롤하려면 표를 감싼 박스가 스크롤 컨테이너여야 하고
+   (overflow-x:auto 면 overflow-y 도 auto 로 계산된다)
+   그러면 thead 의 position:sticky 기준점이 **페이지가 아니라 그 박스**가 된다.
+   그 박스는 세로로 스크롤하지 않으니 top:0 고정 효과가 0 이 된다.
+   → 11열을 유지하는 한 헤더 화면 고정은 구조적으로 불가능하다.
+   (sowt89/my-invest-analysis 도 같은 구조라 헤더가 실제로 붙지 않는다)
+   → 최종 선택: 페이지 스크롤 + 가로 스크롤 + 첫 열 고정 (참조 사이트 방식).
+     헤더는 표 상단에 그대로 있고, 페이지를 스크롤하면 함께 올라간다. */
 
 /* 카드에 표시하는 실명칭 (발행사 포함) — 라벨 아래 작은 글씨 */
 .sig-sub{display:block;font-size:.68rem;color:var(--ink3);line-height:1.45;

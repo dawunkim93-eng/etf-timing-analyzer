@@ -208,59 +208,57 @@ DEPTH_LOW_SAMPLE = 500
 14. **`overflow-x:auto` 안의 `position:sticky` 는 페이지가 아니라 그 컨테이너 기준이다.**
     `.table-wrap` 이 `overflow-x:auto` 라 CSS 규칙상 **`overflow-y` 도 `auto` 로 계산**된다
     (한 축이 `visible` 이 아니면 다른 축도 `visible` 유지 불가).
-    그래서 `thead` 의 `position:sticky; top:0` 이 **먹히지 않았다** —
+    그래서 `thead` 의 `position:sticky; top:0` 이 **먹히지 않는다** —
     기준점이 페이지가 아니라 `.table-wrap` 이 되고, 거기가 세로로 스크롤하지
     않으니까(높이 auto) 고정 효과 0. 실측: 스크롤 시 thead top 이 668 → -532 로 그냥 사라짐.
-    ```
-    ✗ th{position:sticky;top:0}  만으로는 안 된다
-    ✓ .table-scroll{ max-height:calc(100vh - 150px); overflow:auto }
-      #all-table thead th{ position:sticky; top:0; z-index:2; background:var(--card) }
-    ```
-    ★ `max-height` 는 150px 뺀다. 박스 아래 여백(89px = 카드 padding-bottom 16
-      + margin 12 + body padding-bottom 76 등) 만큼 빼야 **페이지 최대 스크롤 시
-      박스 상단이 항상 61px** 에 떨어진다 → 상단바(55px) 에 가려지지 않는다.
-      (844 / 667 / 568px 뷰포트 전부 실측)
-    ★ **`border-collapse:collapse` + sticky `th` 는 Chrome 이 border 를 제자리에
-      남긴다.** `th` 의 `border-bottom` 이 헤더 **상단**에 잘못 그려지고(실측 670px)
+    ★ `border-collapse:collapse` + sticky `th` 는 Chrome 이 border 를 제자리에
+      남긴다. `th` 의 `border-bottom` 이 헤더 **상단**에 잘못 그려지고(실측 670px)
       헤더 아래 구분선이 사라진다 → `border-bottom:none` +
       `box-shadow: inset 0 -1px 0 var(--line)` 로 대체.
-    ★ 좌상단 코너 셀(가로 고정 열 × 세로 고정 헤더)은 z-index 를 따로 줘야 한다.
     ★ 참고: sowt89/my-invest-analysis 는 `th{position:sticky;top:0}` 을 쓰는데
-      **그 표는 가로 스크롤 컨테이너 밖**이라 작동한다. 같은 CSS 를 복사하면 안 된다.
+      **그 표도 가로 스크롤 컨테이너 안에 있다** → 실제로는 고정되지 않는다.
+      같은 CSS 를 복사하면 안 된다.
+    ★ `.card{overflow:hidden}` 도 sticky 기준점을 바꾼다. 카드 안에 있는
+      sticky 는 카드를 기준으로 움직인다(카드는 안 스크롤되므로 무효).
 
-15. **고정 열(가로) 과 헤더 제목(세로 고정) 은 구조적으로 양립 불가다.**
-    고정 열이 있으면, 가로 스크롤할 때 뒤의 헤더 제목이 그 열 아래로 밀려나며
-    **잘린다**. 실측(한국, 첫 열 150px):
+15. **★ 전체 목록 표의 구조적 제약 ★**
     ```
-    scrollLeft=100 → '카테고리' 100% 가림, '현재가' 62% 잘림
-    scrollLeft=200 → '현재가'·'저점대비' 100% 가림
+    11열 유지  →  가로 스크롤 필요  →  표를 감싼 박스가 스크롤 컨테이너
+                                     →  헤더를 화면에 고정할 수 없음
+    5열로 축소  →  넘침 없음         →  박스가 스크롤 컨테이너가 아님
+                                     →  헤더 화면 고정 가능 + 좌우 이동 0
     ```
-    백드롭(좌상단 빈 블록)으로 메꿔도 덮이는 영역이 같아서 해결 안 된다.
-    → 둘 중 하나를 포기해야 한다.
-    ★ 현재 선택: **고정 열을 포기** (`#all-table tbody td:first-child{position:static}`,
-      `#all-table thead th:first-child{left:auto}`) → 11개 제목이 전부 보인다.
-      대신 가로 스크롤 시 왼쪽 종목명이 화면 밖으로 나가 행 식별이 안 된다.
-    ★ 헤더 첫 셀의 `box-shadow:none` 은 주의 — 구분선(inset shadow)까지 지운다.
-      헤더 첫 셀은 `box-shadow:inset 0 -1px 0 var(--line)` 을 따로 지정해야 한다.
+    즉 **"11열 전부" 와 "헤더 화면 고정" 은 동시에 불가능**하다.
+    ★ 실측(한국 390px, 첫 열 150px):
+    ```
+    가로스크롤 100px → '카테고리' 100% 가림, '현재가' 62% 잘림
+    가로스크롤 200px → '현재가'·'저점대비' 100% 가림
+    ```
+    → **최종 선택: 11열 유지 + 페이지 스크롤 + 가로 스크롤 + 첫 열 고정**
+      (참조 사이트 방식). 가로 스크롤 시 뒤 열 제목이 고정 열에 가려지는 것은
+      Excel/Sheets 와 같은 표준 동작으로 받아들인다.
+    ★ 대가로 명확히 감수하는 것 2가지:
+      ① 가로 스크롤 시 뒤 열의 헤더 제목이 고정 열에 가려진다
+      ② 아래로 내려가면 헤더 제목이 안 보인다 (헤더는 페이지와 함께 스크롤)
+    ★ 되돌리려면: 헤더 화면 고정이 필요하면 폰에서 5열로 줄여야 한다
+      (`table-layout:fixed` + % 폭으로 넘침 0 → 실측 320/360/390/430 전부 가능).
+      그러면 `.table-card{overflow:visible}` + `.table-scroll{overflow:visible}` +
+      `thead th{top:55px}` 로 헤더가 **페이지 기준**으로 붙는다(실측: 스크롤 1500 후
+      정확히 55px). `.card{overflow:hidden}` 을 풀어야 한다는 점도 잊지 말 것.
 
-16. **표가 화면에 고정되어 있어야 하면 페이지 스크롤을 없애야 한다.**
+16. **앱형(페이지 스크롤 0) 레이아웃은 표를 작게 만든다 — 되돌렸다.**
     `position:sticky` 로 표 카드를 붙이려면 **containing block 이 카드보다 높아야** 한다.
     카드가 자기 자식(표)만큼만 높으면 붙을 여지가 0 이라 동작하지 않는다
     (실측: 카드 top 626 → 스크롤 700 후 -18, 안 붙음).
-    → 해법은 **앱형 레이아웃**: `body[data-tab=all]` 에서
-    ```
-    height:100dvh; overflow:hidden; display:flex; flex-direction:column
-    ```
-    로 만들어 **페이지 스크롤 0** + 표 박스가 `flex:1` 로 남은 높이를 채운다.
-    ★ CSS 훅은 `app.js` 의 `switchTab()` 가 `document.body.dataset.tab` 으로 설정한다
-      (`:has()` 대신 명시적 훅 — 브라우저 지원 의존 제거).
-    ★ 대가: 화면 높이를 표가 다 먹으므로 위쪽(히어로 197 + 필터 269) 을 줄여야 한다.
-      실측(390×844): 히어로 슬림바 41px + 필터 3행 225px → 표 347px
-      → 한국 6행 / 미국 9행. (이전: 페이지 스크롤 595px, 표 694px, 한국 12행 / 미국 19행)
-      더 늘리려면: ① 필터 접기/펼치기(기본 접힘) ② 상태바를 히어로 줄에 통합
-      ③ 한국 이름을 1줄 말줄임 (행 52→36px)
+    `body[data-tab=all]{height:100dvh;overflow:hidden;display:flex}` 로 페이지 스크롤을
+    0 으로 만들면 표 박스가 남은 높이를 채워 붙긴 하는데,
+    **실제 폰 뷰포트(390×664)에서는 표 박스가 167px = 4행** 밖에 안 된다.
+    (상단바 55 + 히어로 41 + 상태바 34 + 탭 47 + 필터 225 + 카드 chrome 58 = 460)
+    → "아래로 스크롤이 안 된다" 는 오해가 생기고, 표가 2축으로 떠다닌다.
+    ★ **앱형은 되돌렸다.** 현재는 페이지가 스크롤되고 표는 페이지 흐름에 있다.
 
 ## 탭 구조
+
 
 ```
 매수 타이밍  — 신호만 (상단에 시장 요약 배지 → 시장 탭 이동)
