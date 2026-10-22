@@ -342,11 +342,17 @@ body.dark .search-input{background:var(--dk2)}
 }
 .table-wrap table thead th:first-child{z-index:3}
 
-/* 종목명은 열 폭 안에서 ellipsis. 전체명은 td 의 title 속성으로 노출한다. */
+/* 종목명 2줄 허용.
+   line-clamp 대신 wrap 을 쓴다 — line-clamp 는 display 를 바꿔야 해서
+   우선순위·높이 계산이 꼬여서 실제로는 안 먹는다.
+   폭을 고정하면 이름이 길어도 첫 열 폭이 안 늘어나므로 스크롤량이 유지된다. */
 #all-table tbody td:first-child .mute{
   display:inline-block;
-  max-width:118px;
-  overflow:hidden;
-  text-overflow:ellipsis;
+  width:150px;
+  white-space:normal;
   vertical-align:middle;
 }
+
+/* 카드에 표시하는 실명칭 (발행사 포함) — 라벨 아래 작은 글씨 */
+.sig-sub{display:block;font-size:.68rem;color:var(--ink3);line-height:1.45;
+  margin-top:2px;word-break:break-word}

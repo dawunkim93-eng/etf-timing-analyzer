@@ -635,6 +635,7 @@ function renderHoldings() {
         <span class="sig-name">${esc(e.name)}</span>
         ${status}
       </div>
+      ${officialLine(e)}
       <div class="sig-tags" style="margin-top:6px">
         <span class="tag cat">${esc(e.category)}</span>
         <span class="tag theme">${esc(e.theme)}</span>
@@ -674,6 +675,14 @@ function renderHoldings() {
 
   listEl.innerHTML = cards.join('');
 }
+
+
+/* 실명칭(발행사 포함) — 라벨과 다를 때만 아래 줄로 보여준다.
+   표에서는 길어서 못 쓰지만 카드에는 여유가 있다. */
+const officialLine = (e) =>
+  e.official_name && e.official_name !== e.name
+    ? `<span class="sig-sub">${esc(e.official_name)}</span>`
+    : '';
 
 /* ---------------- 매수 ---------------- */
 function renderBuy(etfs) {
@@ -735,6 +744,7 @@ function signalCard(e, isRegime) {
       <span class="sig-code">${esc(e.code)}</span>
       <span class="sig-name">${esc(e.name)}</span>
     </div>
+    ${officialLine(e)}
     <div class="sig-tags" style="margin-top:6px">${tags.join('')}</div>
     ${isCoveredCall ? '<div class="sig-warn">옵션 기반 수익 전략 — 52주 저점 기준이 지수가 아니라 이 ETF의 NAV 저점입니다. 상승 참여도가 낮습니다</div>' : ''}
     ${unverified ? '<div class="sig-warn">이력 52주 미만 — 저점 기준이 "가용 이력 전체"이며 백테스트로 검증되지 않았습니다</div>' : ''}
@@ -810,6 +820,7 @@ function renderSell(etfs) {
           <span class="sig-name">${esc(e.name)}</span>
           ${statusPill}
         </div>
+        ${officialLine(e)}
         <div class="sig-metrics">
           <div class="metric">
             <div class="k">현재가</div>
@@ -883,6 +894,7 @@ function renderAll(etfs) {
     !q ||
     normalizeQuery(e.code).includes(q) ||
     normalizeQuery(e.name).includes(q) ||
+    normalizeQuery(e.official_name || '').includes(q) ||
     normalizeQuery(e.theme).includes(q) ||
     normalizeQuery(e.category).includes(q);
   let rows = etfs.filter((e) => {
@@ -928,7 +940,7 @@ function renderAll(etfs) {
     <tbody>${rows
       .map(
         (e) => `<tr>
-      <td title="${esc(e.name)}"><span class="c">${esc(e.code)}</span> <span class="mute">${esc(e.name)}</span></td>
+      <td title="${esc(e.official_name || e.name)}"><span class="c">${esc(e.code)}</span> <span class="mute">${esc(e.name)}</span></td>
       <td class="mute">${esc(e.category)}</td>
       <td>${fmtPrice(e.price, state.data.currency_label)}</td>
       <td class="${e.from_low_pct <= 10 ? 'pos' : ''}">${pct(e.from_low_pct)}</td>

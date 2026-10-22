@@ -116,7 +116,7 @@ def make_session():
 def fetch_chart(session, ticker: str, rng: str = CHART_RANGE, interval: str = "1d"):
     """야후 일봉.
 
-    반환: {"bars": [{date, close, low, high}], "meta_price", "meta_date", "meta_time"}
+    반환: {"bars": [...], "meta_price", "meta_date", "meta_time", "meta_long_name"}
     실패하면 None.
     """
     import urllib.parse
@@ -180,11 +180,15 @@ def fetch_chart(session, ticker: str, rng: str = CHART_RANGE, interval: str = "1
                 meta_date = dt.datetime.fromtimestamp(
                     meta_time, tz=dt.timezone.utc
                 ).strftime("%Y-%m-%d")
+            # longName = 발행사 포함 실제 명칭. 표에는 너무 길어서 라벨을 쓰고
+            # hover(title) 과 검색 에만 쓴다.
+            long_name = meta.get("longName") or meta.get("shortName")
             return {
                 "bars": out,
                 "meta_price": float(meta_price) if isinstance(meta_price, (int, float)) else None,
                 "meta_date": meta_date,
                 "meta_time": meta_time,
+                "meta_long_name": long_name if isinstance(long_name, str) else None,
             }
         except Exception as exc:  # noqa: BLE001
             last_err = exc
@@ -796,11 +800,17 @@ def collect_market(market: str, session) -> dict:
             print(f"  [{len(etfs) + len(failed):2d}/{len(rows)}] {code:7s} 이력부족 (봉 {len(bars) if bars else 0})")
             continue
         ind = build_indicators(bars, meta, raw)
+        # official_name — 미국만 야후 실명칭(발행사 포함)을 쓴다.
+        # 한국 ETF 의 야후 longName 은 'Mirae Asset Maps Management - ...' 처럼
+        # 발행사 법인명까지 붙고 띄쓰기가 깨진다 → 한국은 기존 한글 이름 유지.
+        yahoo_name = (raw or {}).get("meta_long_name")
+        official = yahoo_name if (market == "us" and yahoo_name) else name
         row = {
             "code": code,
             "ticker": code,
             "yahoo": t,
             "name": name,
+            "official_name": official,
             "category": category,
             "theme": theme,
             "currency": meta["currency_label"],  # type: ignore[index]
