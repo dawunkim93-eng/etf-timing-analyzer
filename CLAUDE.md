@@ -205,6 +205,29 @@ DEPTH_LOW_SAMPLE = 500
     해결했다 (`.c` = `flex:0 0 auto`, `.mute` = `flex:1 1 auto;min-width:0`).
     ★ `td` 가 flex 컨테이너가 되어도 `position:sticky` 는 유지된다 (실측).
 
+14. **`overflow-x:auto` 안의 `position:sticky` 는 페이지가 아니라 그 컨테이너 기준이다.**
+    `.table-wrap` 이 `overflow-x:auto` 라 CSS 규칙상 **`overflow-y` 도 `auto` 로 계산**된다
+    (한 축이 `visible` 이 아니면 다른 축도 `visible` 유지 불가).
+    그래서 `thead` 의 `position:sticky; top:0` 이 **먹히지 않았다** —
+    기준점이 페이지가 아니라 `.table-wrap` 이 되고, 거기가 세로로 스크롤하지
+    않으니까(높이 auto) 고정 효과 0. 실측: 스크롤 시 thead top 이 668 → -532 로 그냥 사라짐.
+    ```
+    ✗ th{position:sticky;top:0}  만으로는 안 된다
+    ✓ .table-scroll{ max-height:calc(100vh - 150px); overflow:auto }
+      #all-table thead th{ position:sticky; top:0; z-index:2; background:var(--card) }
+    ```
+    ★ `max-height` 는 150px 뺀다. 박스 아래 여백(89px = 카드 padding-bottom 16
+      + margin 12 + body padding-bottom 76 등) 만큼 빼야 **페이지 최대 스크롤 시
+      박스 상단이 항상 61px** 에 떨어진다 → 상단바(55px) 에 가려지지 않는다.
+      (844 / 667 / 568px 뷰포트 전부 실측)
+    ★ **`border-collapse:collapse` + sticky `th` 는 Chrome 이 border 를 제자리에
+      남긴다.** `th` 의 `border-bottom` 이 헤더 **상단**에 잘못 그려지고(실측 670px)
+      헤더 아래 구분선이 사라진다 → `border-bottom:none` +
+      `box-shadow: inset 0 -1px 0 var(--line)` 로 대체.
+    ★ 좌상단 코너 셀(가로 고정 열 × 세로 고정 헤더)은 z-index 를 따로 줘야 한다.
+    ★ 참고: sowt89/my-invest-analysis 는 `th{position:sticky;top:0}` 을 쓰는데
+      **그 표는 가로 스크롤 컨테이너 밖**이라 작동한다. 같은 CSS 를 복사하면 안 된다.
+
 ## 탭 구조
 
 ```

@@ -385,6 +385,38 @@ body.dark .search-input{background:var(--dk2)}
 #all-table tbody td:first-child .c{ flex:0 0 auto }   /* 티커는 절대 줄이지 않는다 */
 #all-table tbody td:first-child .mute{ flex:1 1 auto; min-width:0; width:auto }
 
+/* ---------- 세로 스크롤 + 헤더(첫 행) 고정 ----------
+   .table-wrap 은 overflow-x:auto 라서 overflow-y 도 auto 로 계산된다
+   (CSS 규칙: 한 축이 visible 이 아니면 다른 축도 visible 유지 불가).
+   → thead 의 sticky 기준점이 페이지가 아니라 .table-wrap 이 되고,
+     박스 높이가 auto 면 세로로 스크롤이 안 돼서 top:auto 로 무력화된다.
+   그래서 박스에 max-height 를 주고 세로 스크롤을 만든 뒤
+   thead 를 박스 상단에 붙인다.
+   ★ max-height = 100vh - 150px
+     박스 아래 여백(89px = 카드 padding-bottom 16 + margin 12 + body padding-bottom 76 등)
+     만큼 빼면, 페이지 최대 스크롤 시 박스 상단이 항상 61px 에 고정된다.
+     → 상단바(55px) 에 가려지지 않는다. (844/667/568px 뷰포트 전부 실측) */
+.table-scroll{
+  max-height:calc(100vh - 150px);
+  max-height:calc(100dvh - 150px);   /* 모바일 주소창 높이 변화 대응 */
+  overflow:auto;
+}
+
+/* 헤더 고정.
+   ★ border-collapse:collapse + sticky th 조합에서 Chrome 은
+     th 의 border-bottom 을 헤더 상단에 잘못 그린다(실측 670px).
+     헤더 아래 구분선이 사라지므로 border 를 빼고 안쪽 그림자로 그린다. */
+#all-table thead th{
+  position:sticky;
+  top:0;
+  z-index:2;
+  background:var(--card);
+  border-bottom:none;
+  box-shadow:inset 0 -1px 0 var(--line);
+}
+/* 좌상단 코너 셀 (가로 고정 열 × 세로 고정 헤더) — 둘보다 위에 */
+#all-table thead th:first-child{ z-index:4 }
+
 /* 카드에 표시하는 실명칭 (발행사 포함) — 라벨 아래 작은 글씨 */
 .sig-sub{display:block;font-size:.68rem;color:var(--ink3);line-height:1.45;
   margin-top:2px;word-break:break-word}
