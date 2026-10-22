@@ -352,12 +352,9 @@ body.dark .search-input{background:var(--dk2)}
   max-width:130px;
 }
 #all-table.mkt-us tbody td:first-child .mute{
-  display:inline-block;
-  width:96px;
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
-  vertical-align:middle;
 }
 
 /* 한국 — 라벨이 길다(최대 23자) → 2줄 허용.
@@ -370,11 +367,23 @@ body.dark .search-input{background:var(--dk2)}
   max-width:150px;
 }
 #all-table.mkt-kr tbody td:first-child .mute{
-  display:inline-block;
-  width:116px;
   white-space:normal;
-  vertical-align:middle;
+  overflow-wrap:anywhere;   /* 끊김 없는 긴 라벨도 셀 밖으로 안 나가게 */
 }
+
+/* ★ 티커와 이름을 나란히 배치 ★
+   td 를 flex 로 만들어 이름이 "남은 폭"을 자동으로 쓰게 한다.
+   이전처럼 이름 폭을 px 로 고정하면 티커(~40px)를 빼먹어서
+   이름이 셀 밖으로 넘쳤다 (한국 최대 24px, 미국 최대 19px).
+   td 가 flex 컨테이너가 되어도 position:sticky 는 유지된다 (실측). */
+#all-table tbody td:first-child{
+  display:flex;
+  gap:4px;
+  align-items:flex-start;
+  justify-content:flex-start;
+}
+#all-table tbody td:first-child .c{ flex:0 0 auto }   /* 티커는 절대 줄이지 않는다 */
+#all-table tbody td:first-child .mute{ flex:1 1 auto; min-width:0; width:auto }
 
 /* 카드에 표시하는 실명칭 (발행사 포함) — 라벨 아래 작은 글씨 */
 .sig-sub{display:block;font-size:.68rem;color:var(--ink3);line-height:1.45;

@@ -190,6 +190,21 @@ DEPTH_LOW_SAMPLE = 500
     (XLC 는 2018-06) SPY 와 날짜가 어긋난다. `bench_regime_map()` 은
     날짜 → bool 딕셔너리를 반환한다.
 
+13. **이름 span 이 아니라 "셀 기준" 으로 넘침을 재야 한다.**
+    전체 목록 표의 고정 열에서 이름 span 의 `scrollWidth` 만 재면
+    "잘림 0" 으로 통과해 버린다. 실제로는 span 이 `td` 내용 우측을
+    넘어 **옆 컬럼 위로** 그려지고 있었다 (한국 67/67 최대 24px,
+    미국 70/70 최대 19px).
+    ```
+    ✗ name.scrollWidth > name.clientWidth          // span 기준 → 놓침
+    ✓ name.getBoundingClientRect().right
+      > td.getBoundingClientRect().right - paddingRight   // 셀 기준 → 잡힘
+    ```
+    원인은 이름 폭을 px 로 고정하면서 티커(~40px)를 빼먹은 것.
+    `td` 를 `display:flex` 로 만들어 이름이 남은 폭을 자동 배분하게
+    해결했다 (`.c` = `flex:0 0 auto`, `.mute` = `flex:1 1 auto;min-width:0`).
+    ★ `td` 가 flex 컨테이너가 되어도 `position:sticky` 는 유지된다 (실측).
+
 ## 탭 구조
 
 ```
