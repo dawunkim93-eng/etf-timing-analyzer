@@ -719,14 +719,16 @@ const BUY_SORTERS = {
   name: (a, b) => String(a.label || a.name).localeCompare(String(b.label || b.name), 'ko'),
 };
 
+// hide-sm: 폰(<=640)에서 숨김 · hide-md: 태블릿 이하(<=1023)에서 숨김
+// short: 폰에서만 쓰는 축약 헤더 (전체 라벨은 폭이 모자라 잘린다)
 const BUY_COLS = [
   { k: 'name', label: '종목' },
   { k: 'score', label: '점수' },
   { k: 'price', label: '현재가', hide: 'hide-sm' },
-  { k: 'low', label: '저점대비' },
-  { k: 'rsi', label: 'RSI(14주)' },
-  { k: 'high', label: '고점대비', hide: 'hide-sm' },
-  { k: 'ma200', label: '200일선', hide: 'hide-md' },
+  { k: 'low', label: '저점대비', short: '저점' },
+  { k: 'rsi', label: 'RSI(14주)', short: 'RSI' },
+  { k: 'high', label: '고점대비', short: '고점' },
+  { k: 'ma200', label: '200일선', hide: 'hide-md', short: '200일' },
   { k: 'ret12', label: '1년', hide: 'hide-md' },
   { k: 'weeks', label: '이력', hide: 'hide-md' },
   { k: 'group', label: '구분', hide: 'hide-md' },
@@ -741,9 +743,8 @@ function buyRow(e) {
   const level = e.history_level || 'standard';
   const badges = [];
   if (level === 'new') badges.push('<span class="tag new">신규</span>');
-  if (level === 'insufficient') badges.push('<span class="tag observe">이력부족</span>');
+  else if (level === 'insufficient') badges.push('<span class="tag observe">이력부족</span>');
   if (e.theme === '커버드콜') badges.push('<span class="tag warn">커버드콜</span>');
-  if (e.is_full_52w === false) badges.push('<span class="tag warn">이력부족</span>');
 
   // 점수 + 그 점수 그룹의 63일 실측 (없으면 점수만)
   const max = state.score?.score_def?.max ?? 7;
@@ -755,12 +756,13 @@ function buyRow(e) {
   const measuredShort = g ? `<span class="sc-sub sc-short">${pct(g.alpha_pct)}</span>` : '';
 
   return `<tr>
-    <td class="nm"><span class="c">${esc(e.code)}</span><span class="mute">${esc(e.label || e.name)}</span>${badges.join('')}</td>
+    <td class="nm" title="${esc(e.label || e.name)}${e.official_name && e.official_name !== (e.label || e.name) ? ' · ' + esc(e.official_name) : ''}"><span class="c">${esc(e.code)}</span><span class="mute">${esc(e.label || e.name)}</span>${badges.join('')}</td>
     <td class="sc ${sc == null ? '' : scoreTier(sc)}"><span class="scv ${sc == null ? '' : scoreTier(sc)}">${sc == null ? '—' : sc}</span>${bar}${measured}${measuredShort}</td>
     <td class="hide-sm">${fmtPrice(e.price, d.currency_label)}</td>
     <td class="${e.from_low_pct <= 10 ? 'pos' : ''}">${pct(e.from_low_pct)}</td>
     <td class="${e.rsi <= 50 ? 'pos' : ''}">${num(e.rsi, 1)}</td>
-    <td class="hide-sm ${e.from_high_pct <= -30 ? 'pos' : ''}">${pct(e.from_high_pct)}</td>
+    <td class="col-high ${e.from_high_pct <= -30 ? 'pos' : ''}"
+      title="52주 고점 ${fmtPrice(e.high_52w, d.currency_label)} 대비 ${pct(e.from_high_pct)}">${pct(e.from_high_pct)}</td>
     <td class="hide-md ${cls(e.ma200_dist_pct)}">${pct(e.ma200_dist_pct)}</td>
     <td class="hide-md ${cls(e.ret_12m)}">${pct(e.ret_12m)}</td>
     <td class="hide-md mute">${e.history_weeks}주</td>
@@ -790,7 +792,9 @@ function renderBuy(etfs) {
 
   // 헤더
   const head = `<thead><tr>${BUY_COLS.map(
-    (c) => `<th class="col-${c.k} ${c.hide || ''}">${c.label}</th>`
+    (c) =>
+      `<th class="col-${c.k} ${c.hide || ''}"><span class="lbl-full">${c.label}</span>` +
+      `${c.short ? `<span class="lbl-short">${c.short}</span>` : ''}</th>`
   ).join('')}</tr></thead>`;
 
   const grpRow = (label, rows) =>

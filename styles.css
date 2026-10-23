@@ -470,6 +470,7 @@ body.dark .search-input{background:var(--dk2)}
 .sc-sub{display:block;font-size:.58rem;color:var(--ink3);line-height:1.35;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sc-short{display:none}
+.lbl-short{display:none}   /* 폰에서만 축약 헤더를 쓴다 */
 
 /* 보유 버튼 — 표 안에서는 좁은 정사각형으로 */
 .buy-table td:last-child{padding:5px 1px;text-align:center}
@@ -499,20 +500,29 @@ body.dark .search-input{background:var(--dk2)}
 }
 /* 폰: 5열 (현재가·고점대비도 숨김) */
 @media (max-width:640px){
-  .buy-table .hide-sm{display:none}
-  .buy-table th.col-name{width:33%}
-  .buy-table th.col-score{width:24%}
-  .buy-table th.col-low{width:17%}
-  .buy-table th.col-rsi{width:15%}
+  /* 폰: 고점대비까지 6열 — 글자를 줄여서 맞춘다 (가로 스크롤 없음) */
+  .buy-table .hide-sm{display:none}          /* 현재가만 숨김 */
+  .buy-table th,.buy-table td{font-size:.66rem;padding:4px 3px}
+  .buy-table th{font-size:.58rem}
+  .buy-table td:last-child{padding:5px 1px}
+  .buy-table th.col-name{width:28%}
+  .buy-table th.col-score{width:20%}
+  .buy-table th.col-low{width:15%}
+  .buy-table th.col-rsi{width:12%}
+  .buy-table th.col-high{width:14%}
   .buy-table th.col-hold{width:11%}
-  .buy-table th,.buy-table td{padding:6px 4px}
+  .buy-table .lbl-full{display:none}
+  .buy-table .lbl-short{display:inline}
+  .buy-table .scv{font-size:.9rem}
+  .buy-table .scbar{height:4px;margin:2px 0 2px auto}
+  .buy-table .sc-sub{font-size:.54rem}
   /* 폰에서는 이름을 코드 아래 2줄로 — 잘라서 못 읽는 것보다 낫다 */
-  .buy-table td.nm{display:block}
-  .buy-table td.nm .c{display:block;font-size:.72rem;line-height:1.25}
+  .buy-table td.nm{display:block;overflow-wrap:anywhere}
+  .buy-table td.nm .c{display:block;font-size:.64rem;line-height:1.25}
   .buy-table td.nm .mute{
     display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
-    font-size:.7rem;line-height:1.3;white-space:normal;overflow:hidden;
-    word-break:keep-all;flex:none;
+    font-size:.64rem;line-height:1.3;white-space:normal;overflow:hidden;
+    word-break:keep-all;overflow-wrap:anywhere;flex:none;
   }
-  .buy-table td.nm .tag{font-size:.56rem}
+  .buy-table td.nm .tag{font-size:.54rem}
 }
