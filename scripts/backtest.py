@@ -614,6 +614,30 @@ def main() -> None:
     except Exception as exc:  # noqa: BLE001
         print(f"  ! 낙폭 분석 실패 (기존 백테스트 결과는 정상): {exc}")
 
+    # 매수 점수 검증 — 확정된 점수(universe.py)가 실제로 순위를 가르는지
+    try:
+        from score_analysis import build_score_analysis
+
+        score = build_score_analysis(prep, bench)
+        score_out = DATA_DIR / "score.json"
+        score_out.write_text(
+            json.dumps(score, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+        )
+        print(f"  → {score_out.relative_to(ROOT)}")
+        mark = "✓" if score["monotonic"]["score_axis"] else "✗"
+        print(
+            f"    점수 축 단조 {mark} (역전 {len(score['monotonic']['inversions'])}건) · "
+            f"연도별 상위>하위 {score['year_wins']['top_better_years']}/"
+            f"{score['year_wins']['measured_years']}"
+        )
+        for g in score["groups"]:
+            print(
+                f"    {g['score']}점 n={g['n']:6d} 알파 {g['alpha_pct']:+6.2f}% "
+                f"승률 {g['win_pct']:5.1f}%"
+            )
+    except Exception as exc:  # noqa: BLE001
+        print(f"  ! 점수 검증 실패 (기존 결과는 정상): {exc}")
+
     # 공포지수 분석 — CNN Fear & Greed / VIX 와 매수 신호의 관계
     try:
         from fear_greed_analysis import main as fg_main

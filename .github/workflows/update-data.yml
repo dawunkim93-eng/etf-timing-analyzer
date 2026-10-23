@@ -70,7 +70,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/etf_us.json data/etf_kr.json data/history.json data/backtest.json data/depth.json
+          git add data/etf_us.json data/etf_kr.json data/history.json data/backtest.json data/depth.json data/score.json
           git commit -m "chore: ETF 데이터 갱신 ($(TZ=Asia/Seoul date +%Y-%m-%d\ %H:%M)\ KST)"
           for attempt in 1 2 3; do
             if git push; then exit 0; fi

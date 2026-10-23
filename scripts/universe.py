@@ -236,6 +236,73 @@ EXIT_RSI = 60.0              # 익절 기준선 (기본)
 EXIT_RSI_STRICT = 70.0       # 익절 기준선 (엄격)
 STOP_LOSS = 0.15             # 손절 -15%
 MAX_HOLD_DAYS = 63           # 익절·손절이 안 터지면 63일(1분기) 후 정리
+
+# --------------------------------------------------- 매수 점수 (0~7)
+# 신호 종목끼리의 상대 순위다. 미래 수익 예측이 아니다.
+#
+# 기준은 손으로 정하지 않았다. scripts/score_search.py 로 10년 신호 27,132건을
+# 신호 날짜의 캘린더 중위로 전/후반 분할해 **전반에서만** 구간·가중치를 도출하고
+# 후반에서 검증했다. 살아남은 요소는 낙폭과 RSI 둘뿐이다.
+#
+#   요소            전/후반 안정성(구간 알파 순위상관)   판정
+#   낙폭(고점 대비)  +0.61                              유지
+#   RSI(주봉)        +1.00                              유지
+#   200일선 이격      +1.00                              유지(조합 성과는 약함)
+#   3개월 수익률      +1.00                              유지(조합 성과는 약함)
+#   1년 수익률        +0.60                              유지(조합 성과는 약함)
+#   저점 근접도        +0.20                              탈락 — 전/후반 순서가 뒤집힘
+#   이력              +0.00                              탈락
+#
+# 후반 표본 실측 (S4 = 낙폭 + RSI, 63거래일 알파):
+#   7점 n=475  +3.04%  승률 70.9%   ← 최상위
+#   6점 n=442  +0.51%  승률 58.8%   ← 여기 한 칸 역전(소표본 혼합). 화면에 실측값을 그대로 표시한다
+#   5점 n=804  +1.32%  승률 64.6%
+#   0점 n=2,967 -2.79% 승률 52.0%
+# 연도별로는 7년 중 5년 상위 그룹이 하위보다 나았다 (2023·2026 역전).
+SCORE_DEPTH_POINTS: dict[str, int] = {
+    # 52주 고점 대비 낙폭 구간 → 점수. 알파를 선형 매핑한 값(구간 순서 = 점수 순서)
+    "15% 미만": 0,
+    "15~20%": 1,
+    "20~25%": 1,
+    "25~30%": 2,
+    "30~35%": 4,
+    "35~40%": 1,
+    "40%+": 0,
+}
+SCORE_RSI_POINTS: list[tuple[float, int]] = [
+    # (이 값 미만 → 점수). 위에서부터 검사한다. 45~50 은 0점.
+    (35.0, 3),
+    (40.0, 2),
+    (45.0, 1),
+]
+SCORE_MAX = 7   # 4 + 3
+
+
+def buy_score(depth_label: str | None, rsi: float | None) -> int:
+    """매수 점수 (0~7). 낙폭 점수 + RSI 점수.
+
+    ★ 신호(raw_pass)일 때만 의미가 있다. 판정은 fetch_etf.apply_signal 이 한다.
+    """
+    pts = SCORE_DEPTH_POINTS.get(depth_label or "", 0)
+    if rsi is not None:
+        for hi, p in SCORE_RSI_POINTS:
+            if rsi < hi:
+                pts += p
+                break
+    return pts
+
+
+def score_parts(depth_label: str | None, rsi: float | None) -> dict[str, int]:
+    """점수 구성 요소 — 화면 툴팁·검증용."""
+    depth_pts = SCORE_DEPTH_POINTS.get(depth_label or "", 0)
+    rsi_pts = 0
+    if rsi is not None:
+        for hi, p in SCORE_RSI_POINTS:
+            if rsi < hi:
+                rsi_pts = p
+                break
+    return {"depth": depth_pts, "rsi": rsi_pts}
+
 # --------------------------------------------------- RSI 시간프레임
 # 2026-10 기준 주봉으로 교체했다.
 #

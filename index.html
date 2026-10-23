@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#f7f7f5">
 <meta name="description" content="미국·한국 주요 ETF 타이밍 분석 — 52주 최저가 대비 10% 이내, RSI 50 이하 매수 신호와 익절·손절 타이밍">
 <title>ETF 타이밍 분석</title>
-<link rel="stylesheet" href="styles.css?v=ccf1dfd5">
+<link rel="stylesheet" href="styles.css?v=43d9fe72">
 </head>
 <body>
 
@@ -83,30 +83,28 @@
     </button>
   </div>
 
-  <div class="card">
-    <div class="card-h">1순위 · 국면 필터 통과</div>
-    <div class="card-b" id="regime-list"></div>
-    <div class="note">원조건(저점+10% 이내 · RSI 50 이하) + 시장이 약세 국면일 때만 표시</div>
-  </div>
-
-  <div class="card">
-    <div class="card-h">2순위 · 원조건만 충족</div>
-    <div class="card-b" id="raw-list"></div>
-    <div class="note">52주 최저가 대비 10% 이내 + RSI 50 이하. 시장 국면과 무관하게 표시</div>
-  </div>
-
-  <div class="card">
-    <div class="card-h">낙폭 필터</div>
+  <div class="card buy-card">
+    <div class="card-h">매수 후보 · 점수순</div>
     <div class="card-b">
       <div class="row">
-        <select id="f-depth">
-          <option value="">낙폭 전체 보기</option>
+        <select id="f-buy-sort" aria-label="정렬">
+          <option value="score">점수 높은순</option>
+          <option value="low">저점 가까운순</option>
+          <option value="rsi">RSI 낮은순</option>
+          <option value="depth">낙폭 깊은순</option>
+          <option value="name">이름순</option>
         </select>
+        <select id="f-depth" aria-label="낙폭 필터">
+          <option value="">낙폭 전체</option>
+        </select>
+        <span class="count" id="buy-count"></span>
       </div>
-      <div class="note" id="depth-note">
-        52주 고점 대비 얼마나 떨어져 있는지로 매수 후보를 좁힙니다.
-        10년 백테스트에서 30~35% 구간의 성과가 가장 좋았지만(평균 +7.4%, 승률 67.6%),
-        표본이 821행뿐이라 확정된 사실은 아닙니다. <b>검증</b> 탭에서 연도별 내역을 확인하세요.
+      <div class="table-wrap buy-table"><table id="buy-table"></table></div>
+      <div class="note" id="buy-note">
+        <b>점수 0~7</b> = 낙폭 점수(0~4) + RSI 점수(0~3).
+        10년 신호 27,132건을 전/후반으로 나눠 <b>전반에서 기준을 도출하고 후반에서 검증</b>했습니다.
+        점수 옆 회색 글씨는 <b>그 점수 그룹의 63일 실측</b>입니다.
+        점수는 신호끼리의 상대 순위이며 수익 예측이 아닙니다 — <b>검증</b> 탭에서 연도별 내역을 확인하세요.
       </div>
     </div>
   </div>
@@ -254,6 +252,14 @@
   </div>
 
   <div class="card">
+    <div class="card-h">매수 점수 검증 · 낙폭 + RSI</div>
+    <div class="card-b" id="score-summary"></div>
+    <div class="card-b table-wrap"><table id="score-table"></table></div>
+    <div class="card-b" id="score-factors"></div>
+    <div class="note" id="score-note"></div>
+  </div>
+
+  <div class="card">
     <div class="card-h">낙폭별 성과 · 52주 고점 대비</div>
     <div class="card-b" id="depth-summary"></div>
   </div>
@@ -349,6 +355,6 @@
   <button data-tab="guide"><span>설명서</span></button>
 </nav>
 
-<script src="app.js?v=de357515"></script>
+<script src="app.js?v=a8354265"></script>
 </body>
 </html>

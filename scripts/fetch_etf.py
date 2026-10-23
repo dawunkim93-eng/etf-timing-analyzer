@@ -54,10 +54,15 @@ from universe import (  # noqa: E402
     REGIME_THRESHOLD,
     RSI_PERIOD,
     RSI_TIMEFRAME,
+    SCORE_DEPTH_POINTS,
+    SCORE_MAX,
+    SCORE_RSI_POINTS,
     SIGNAL_LOW_FROM_52W,
     SIGNAL_RSI_MAX,
     WEEKLY_MIN_BARS,
+    buy_score,
     depth_bucket,
+    score_parts,
     yahoo_ticker,
 )
 
@@ -680,6 +685,11 @@ def apply_signal(etf: dict, regime: str | None) -> dict:
         # 52주 고점 대비 낙폭 버킷 — 순위 재배치가 아니라 정보 표기용
         "depth_label": bucket,
         "depth_sweet_spot": bucket == DEPTH_SWEET_SPOT,
+        # 매수 점수(0~7) = 낙폭 점수 + RSI 점수.
+        # 10년 전/후반 분할 검증을 통과한 요소만 쓴다 (universe.py 주석 참고).
+        # ★ 신호일 때만 의미가 있다. 비신호는 None.
+        "score": buy_score(bucket, rsi) if raw else None,
+        "score_parts": score_parts(bucket, rsi) if raw else None,
         # 이력 26~52주 종목의 신호는 백테스트로 검증되지 않았다
         # (가상 상장 1년 ETF 백테스트로는 동일하게 작동했지만, 실ETF 표본이 아니다)
         "verified": level == "standard",
@@ -859,6 +869,10 @@ def collect_market(market: str, session) -> dict:
             "regime_threshold": REGIME_THRESHOLD,
             "min_bars_std": MIN_BARS_STD,
             "min_bars_new": MIN_BARS_NEW,
+            # 매수 점수(0~7) — 화면의 점수표가 이 값을 그대로 쓴다
+            "score_max": SCORE_MAX,
+            "score_depth_points": SCORE_DEPTH_POINTS,
+            "score_rsi_points": [[hi, pts] for hi, pts in SCORE_RSI_POINTS],
         },
     }
 

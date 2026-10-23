@@ -10,7 +10,9 @@ const state = {
   portfolio: null,
   backtest: null,
   depth: null,
+  score: null,
   fearGreed: null,
+  buySort: 'score',
   exitRsi: 60,
   stopPct: 15,
   filters: { cat: '', sort: 'signal', state: '', depth: '', depthAll: '', search: '', theme: '' },
@@ -32,11 +34,6 @@ const FG_GRADE = {
 const fgGrade = (rating) => FG_GRADE[rating] || 'n';
 
 /* 버킷 라벨 → CSS 클래스 (곡점 강조, 폭락 경고) */
-function depthCls(label) {
-  if (label === DEPTH_SWEET) return 'sweet';
-  if (label === DEPTH_CRASH) return 'crash';
-  return '';
-}
 
 const MARKETS = {
   us: { label: '🇺🇸 미국', file: 'data/etf_us.json', other: 'kr', otherLabel: '🇰🇷 한국' },
@@ -167,25 +164,6 @@ const fmtPrice = (v, cur) => {
 const cls = (v) => (v === null || v === undefined ? '' : v >= 0 ? 'pos' : 'neg');
 
 /* 스파크라인 — 종가 배열을 SVG 경로로 */
-function sparkline(values, w = 150, h = 34) {
-  const vals = (values || []).filter((v) => v !== null && v !== undefined);
-  if (vals.length < 2) return '';
-  const min = Math.min(...vals);
-  const max = Math.max(...vals);
-  const span = max - min || 1;
-  const pts = vals.map((v, i) => {
-    const x = (i / (vals.length - 1)) * (w - 2) + 1;
-    const y = h - 2 - ((v - min) / span) * (h - 4);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  });
-  const last = vals[vals.length - 1];
-  const first = vals[0];
-  const stroke = last >= first ? '#4c8f3a' : '#c4472e';
-  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
-    <polyline points="${pts.join(' ')}" fill="none" stroke="${stroke}" stroke-width="1.6"
-      stroke-linejoin="round" stroke-linecap="round"/>
-  </svg>`;
-}
 
 /* ------------------------------------------------------------------ 로드 */
 /* 시장 세그먼트 상태 갱신 — 보고 있는 시장만 하이라이트한다. */
@@ -230,6 +208,13 @@ async function loadBacktest() {
     state.depth = null;
   }
   try {
+    const res = await fetch('data/score.json', { cache: 'no-store' });
+    if (!res.ok) throw new Error('없음');
+    state.score = await res.json();
+  } catch {
+    state.score = null;
+  }
+  try {
     const res = await fetch('data/feargreed.json', { cache: 'no-store' });
     if (!res.ok) throw new Error('없음');
     state.fearGreed = await res.json();
@@ -237,8 +222,9 @@ async function loadBacktest() {
     state.fearGreed = null;
   }
   renderVerify();
-  // 낙폭·공포지수 설명은 depth.json / feargreed.json 이 로드된 뒤에 채워진다
+  // 낙폭·공포지수·점수 설명은 JSON 이 로드된 뒤에 채워진다
   if (state.data) {
+    renderBuy(state.data.etfs);
     renderGuide();
     renderFearGreedSummary();
   }
@@ -708,95 +694,139 @@ const officialLine = (e) =>
     ? `<span class="sig-sub">${esc(e.official_name)}</span>`
     : '';
 
-/* ---------------- 매수 ---------------- */
+/* ---------------- 매수 (점수표) ---------------- */
+// 점수 그룹의 과거 실측값 — data/score.json 의 groups
+function scoreGroup(score) {
+  const g = state.score?.groups?.find((x) => x.score === score);
+  return g || null;
+}
+
+function scoreTier(score) {
+  if (score >= 6) return 's-gold';
+  if (score >= 4) return 's-good';
+  if (score >= 2) return 's-mid';
+  return 's-low';
+}
+
+const BUY_SORTERS = {
+  score: (a, b) =>
+    (b.signal?.score ?? 0) - (a.signal?.score ?? 0) ||
+    (a.from_low_pct ?? 99) - (b.from_low_pct ?? 99) ||
+    (a.rsi ?? 99) - (b.rsi ?? 99),
+  low: (a, b) => (a.from_low_pct ?? 99) - (b.from_low_pct ?? 99),
+  rsi: (a, b) => (a.rsi ?? 99) - (b.rsi ?? 99),
+  depth: (a, b) => (a.from_high_pct ?? 0) - (b.from_high_pct ?? 0),  // 더 깊은 낙폭 먼저
+  name: (a, b) => String(a.label || a.name).localeCompare(String(b.label || b.name), 'ko'),
+};
+
+const BUY_COLS = [
+  { k: 'name', label: '종목' },
+  { k: 'score', label: '점수' },
+  { k: 'price', label: '현재가', hide: 'hide-sm' },
+  { k: 'low', label: '저점대비' },
+  { k: 'rsi', label: 'RSI(14주)' },
+  { k: 'high', label: '고점대비', hide: 'hide-sm' },
+  { k: 'ma200', label: '200일선', hide: 'hide-md' },
+  { k: 'ret12', label: '1년', hide: 'hide-md' },
+  { k: 'weeks', label: '이력', hide: 'hide-md' },
+  { k: 'group', label: '구분', hide: 'hide-md' },
+  { k: 'hold', label: '보유' },
+];
+
+function buyRow(e) {
+  const d = state.data;
+  const sc = e.signal?.score;
+  const g = scoreGroup(sc);
+  const held = isHeld(state.market, e.code);
+  const level = e.history_level || 'standard';
+  const badges = [];
+  if (level === 'new') badges.push('<span class="tag new">신규</span>');
+  if (level === 'insufficient') badges.push('<span class="tag observe">이력부족</span>');
+  if (e.theme === '커버드콜') badges.push('<span class="tag warn">커버드콜</span>');
+  if (e.is_full_52w === false) badges.push('<span class="tag warn">이력부족</span>');
+
+  // 점수 + 그 점수 그룹의 63일 실측 (없으면 점수만)
+  const max = state.score?.score_def?.max ?? 7;
+  const bar = sc == null ? '' :
+    `<span class="scbar"><i style="width:${Math.round((sc / max) * 100)}%"></i></span>`;
+  const measured = g
+    ? `<span class="sc-sub">63일 ${pct(g.alpha_pct)} · 승률 ${num(g.win_pct, 0)}% (n=${g.n.toLocaleString()})</span>`
+    : '<span class="sc-sub">실측 없음</span>';
+  const measuredShort = g ? `<span class="sc-sub sc-short">${pct(g.alpha_pct)}</span>` : '';
+
+  return `<tr>
+    <td class="nm"><span class="c">${esc(e.code)}</span><span class="mute">${esc(e.label || e.name)}</span>${badges.join('')}</td>
+    <td class="sc ${sc == null ? '' : scoreTier(sc)}"><span class="scv ${sc == null ? '' : scoreTier(sc)}">${sc == null ? '—' : sc}</span>${bar}${measured}${measuredShort}</td>
+    <td class="hide-sm">${fmtPrice(e.price, d.currency_label)}</td>
+    <td class="${e.from_low_pct <= 10 ? 'pos' : ''}">${pct(e.from_low_pct)}</td>
+    <td class="${e.rsi <= 50 ? 'pos' : ''}">${num(e.rsi, 1)}</td>
+    <td class="hide-sm ${e.from_high_pct <= -30 ? 'pos' : ''}">${pct(e.from_high_pct)}</td>
+    <td class="hide-md ${cls(e.ma200_dist_pct)}">${pct(e.ma200_dist_pct)}</td>
+    <td class="hide-md ${cls(e.ret_12m)}">${pct(e.ret_12m)}</td>
+    <td class="hide-md mute">${e.history_weeks}주</td>
+    <td class="hide-md">${
+      e.signal.regime_pass
+        ? '<span class="pill p">★약세</span>'
+        : '<span class="pill r">참고</span>'
+    }</td>
+    <td><button class="pf-add${held ? ' on' : ''}"
+      data-hold-code="${esc(e.code)}" data-hold-mkt="${esc(state.market)}"
+      aria-pressed="${held}" title="${held ? '보유 목록에서 제거' : '보유 목록에 추가'}">${
+        held ? '✓' : '+'
+      }</button></td>
+  </tr>`;
+}
+
 function renderBuy(etfs) {
-  const regime = state.data.regime;
+  const t = $('buy-table');
+  if (!t) return;
   const depthFilter = state.filters.depth;
   const match = (e) => !depthFilter || e.signal?.depth_label === depthFilter;
-  const regimeList = etfs.filter((e) => e.signal.regime_pass && match(e));
-  const rawOnly = etfs.filter((e) => e.signal.raw_pass && !e.signal.regime_pass && match(e));
+  const sortFn = BUY_SORTERS[state.buySort] || BUY_SORTERS.score;
 
-  $('regime-list').innerHTML = regimeList.length
-    ? regimeList.map((e) => signalCard(e, true)).join('')
-    : `<div class="empty">${
-        regime === 'bear'
-          ? '약세 국면이지만 두 조건을 동시에 만족하는 종목이 없습니다.'
-          : `<b>지금은 상승 국면입니다.</b><br>
-             이 규칙은 <b>약세 국면에서만</b> 검증되었습니다.<br>
-             10년 백테스트에서 상승 국면에는 매수 신호가 거의 잡히지 않고,
-             잡힌 것은 지수를 따라가지 못했습니다.<br>
-             <span style="font-size:.76rem">매수 후보를 임의로 만들지 않습니다.
-             아래 2순위는 참고용입니다.</span>`
-      }</div>`;
+  const all = etfs.filter((e) => e.signal?.raw_pass && match(e));
+  const regimeList = all.filter((e) => e.signal.regime_pass).sort(sortFn);
+  const rawOnly = all.filter((e) => !e.signal.regime_pass).sort(sortFn);
 
-  $('raw-list').innerHTML = rawOnly.length
-    ? rawOnly.map((e) => signalCard(e, false)).join('')
-    : '<div class="empty">원조건을 만족하는 종목이 없습니다.</div>';
-}
+  // 헤더
+  const head = `<thead><tr>${BUY_COLS.map(
+    (c) => `<th class="col-${c.k} ${c.hide || ''}">${c.label}</th>`
+  ).join('')}</tr></thead>`;
 
-function signalCard(e, isRegime) {
-  const regime = state.data?.regime;
-  const d = state.data;
-  const lowOk = e.from_low_pct !== null && e.from_low_pct <= 10;
-  const rsiOk = e.rsi !== null && e.rsi <= 50;
-  const maDist = e.ma200_dist_pct;
-  const depthLabel = e.signal?.depth_label || '';
-  const level = e.history_level || 'standard';
-  const weeks = e.history_weeks;
-  const tags = [
-    `<span class="tag cat">${esc(e.category)}</span>`,
-    `<span class="tag theme">${esc(e.theme)}</span>`,
-    depthLabel ? `<span class="tag depth ${depthCls(depthLabel)}">고점 대비 ${esc(depthLabel)}</span>` : '',
-  ];
-  if (level === 'new') {
-    tags.push(`<span class="tag new">신규 · 이력 ${weeks}주</span>`);
-  } else if (level === 'insufficient') {
-    tags.push('<span class="tag observe">이력 부족</span>');
+  const grpRow = (label, rows) =>
+    `<tr class="grp"><td colspan="${BUY_COLS.length}">${label} <b>${rows.length}</b></td></tr>`;
+
+  const body = [];
+  if (regimeList.length) {
+    body.push(grpRow('★ 국면 필터 통과', regimeList));
+    body.push(...regimeList.map(buyRow));
   }
-  if (isRegime) tags.push('<span class="tag star">★ 약세 필터</span>');
-  else tags.push(
-    regime === 'bull'
-      ? '<span class="tag warn">원조건만 · 참고용</span>'
-      : '<span class="tag warn">원조건만</span>'
-  );
+  if (rawOnly.length) {
+    body.push(grpRow(state.data.regime === 'bear' ? '원조건만 충족' : '참고용 · 원조건만 충족', rawOnly));
+    body.push(...rawOnly.map(buyRow));
+  }
+  if (!all.length) {
+    body.push(
+      `<tr><td colspan="${BUY_COLS.length}" class="empty-cell">${
+        state.data.regime === 'bear'
+          ? '조건을 만족하는 종목이 없습니다.'
+          : '<b>지금은 상승 국면입니다.</b> 이 규칙은 약세 국면에서만 검증되었습니다. ' +
+            '아래 참고용 신호도 두 조건을 만족한 종목이 없습니다.'
+      }</td></tr>`
+    );
+  }
 
-  const unverified = e.signal?.verified === false;
-  // 커버드콜은 옵션 기반 수익 전략 — 52주 저점 기준이 지수가 아니라 전략 NAV 저점
-  const isCoveredCall = e.theme === '커버드콜';
-  return `<div class="sig">
-    <div class="sig-top">
-      <span class="sig-code">${esc(e.code)}</span>
-      <span class="sig-name">${esc(e.label || e.name)}</span>
-    </div>
-    ${officialLine(e)}
-    <div class="sig-tags" style="margin-top:6px">${tags.join('')}</div>
-    ${isCoveredCall ? '<div class="sig-warn">옵션 기반 수익 전략 — 52주 저점 기준이 지수가 아니라 이 ETF의 NAV 저점입니다. 상승 참여도가 낮습니다</div>' : ''}
-    ${unverified ? '<div class="sig-warn">이력 52주 미만 — 저점 기준이 "가용 이력 전체"이며 백테스트로 검증되지 않았습니다</div>' : ''}
-    <div class="sig-metrics four">
-      <div class="metric">
-        <div class="k">${e.is_full_52w ? '52주 저점 대비' : `저점 대비(${e.low_ref_weeks}주)`}</div>
-        <div class="v ${lowOk ? 'pass' : 'fail'}">${pct(e.from_low_pct)}</div>
-      </div>
-      <div class="metric">
-        <div class="k">RSI(14주)</div>
-        <div class="v ${rsiOk ? 'pass' : 'fail'}">${num(e.rsi, 1)}</div>
-        <div class="k sub">${esc(e.rsi_weekly_date || '')} 주 확정</div>
-      </div>
-      <div class="metric">
-        <div class="k">고점 대비</div>
-        <div class="v ${e.from_high_pct <= -30 ? 'pass' : ''}">${pct(e.from_high_pct)}</div>
-      </div>
-      <div class="metric">
-        <div class="k">200일선 이격</div>
-        <div class="v ${maDist === null ? '' : maDist >= 0 ? 'pass' : 'warn'}">${pct(maDist)}</div>
-      </div>
-    </div>
-    <div class="sig-foot">
-      ${sparkline(e.spark)}
-      <span class="sig-extra">${fmtPrice(e.price, d.currency_label)}</span>
-    </div>
-  </div>`;
+  t.className = state.buySort;
+  t.innerHTML = `${head}<tbody>${body.join('')}</tbody>`;
+
+  const count = $('buy-count');
+  if (count) {
+    count.textContent = all.length
+      ? `${all.length}종목 · 국면 통과 ${regimeList.length}`
+      : '0종목';
+  }
 }
+
 
 /* ---------------- 익절 ---------------- */
 function renderSell(etfs) {
@@ -1218,7 +1248,105 @@ function cls2(v) {
 }
 
 /* ---------------- 검증 ---------------- */
+/* ---------------- 검증 · 매수 점수 ---------------- */
+function renderScoreVerify() {
+  const sc = state.score;
+  const sum = $('score-summary');
+  const tbl = $('score-table');
+  const fac = $('score-factors');
+  const note = $('score-note');
+  if (!sum || !tbl) return;
+  if (!sc) {
+    sum.innerHTML =
+      '<div class="empty">점수 검증 결과가 없습니다. scripts/backtest.py 를 실행해 data/score.json 을 생성하세요.</div>';
+    tbl.innerHTML = '';
+    if (fac) fac.innerHTML = '';
+    if (note) note.innerHTML = '';
+    return;
+  }
+
+  const def = sc.score_def || {};
+  const mono = sc.monotonic || {};
+  const yw = sc.year_wins || {};
+  const ov = sc.overall || {};
+
+  sum.innerHTML = `
+    <div class="guide">
+      <p><b>점수 = 낙폭 점수(0~${maxDepthPoints(def)}) + RSI 점수(0~${maxRsiPoints(def)})</b>.
+      매수 신호끼리의 <b>상대 순위</b>이며 미래 수익 예측이 아닙니다.</p>
+      <ul>
+        <li>기준은 손으로 정하지 않았습니다. 10년 신호 ${(ov.n || 0).toLocaleString()}건을
+          <b>신호 날짜의 캘린더 중위</b>로 전/후반 분할해 전반에서 구간·가중치를 도출하고
+          후반에서 검증했습니다 (<code>scripts/score_search.py</code>).</li>
+        <li>점수 축 단조: <b>${mono.score_axis ? '✓ 유지' : '✗ 역전 있음'}</b>
+          ${(mono.inversions || []).length ? `— 역전 ${mono.inversions.length}건` : ''}</li>
+        <li>연도별 상위 &gt; 하위: <b>${yw.top_better_years}/${yw.measured_years}년</b></li>
+        <li>63거래일 보유 기준 · 표본 ${(ov.n || 0).toLocaleString()}건 ·
+          전체 알파 ${pct(ov.alpha_pct)} · 승률 ${num(ov.win_pct, 1)}%</li>
+      </ul>
+    </div>`;
+
+  // 점수 그룹 표
+  const rows = (sc.groups || []).map((g) => {
+    const inv = (mono.inversions || []).some((x) => x.higher_score === g.score);
+    return `<tr>
+      <td><b>${g.score}</b>점</td>
+      <td>${g.n.toLocaleString()}</td>
+      <td>${pct(g.avg_pct)}</td>
+      <td>${pct(g.median_pct)}</td>
+      <td class="${g.win_pct >= 50 ? 'pos' : 'neg'}">${num(g.win_pct, 1)}%</td>
+      <td class="${cls(g.alpha_pct)}"><b>${pct(g.alpha_pct)}</b></td>
+      <td class="${cls(g.alpha_first_half)}">${pct(g.alpha_first_half)}</td>
+      <td class="${cls(g.alpha_second_half)}">${pct(g.alpha_second_half)}</td>
+      <td class="mute">${g.low_sample ? '저수표' : ''}${inv ? ' 역전' : ''}</td>
+    </tr>`;
+  });
+  tbl.innerHTML = `<thead><tr>
+      <th>점수</th><th>n</th><th>평균</th><th>중앙</th><th>승률</th>
+      <th>알파</th><th>전반 알파</th><th>후반 알파</th><th></th>
+    </tr></thead><tbody>${rows.join('')}</tbody>`;
+
+  // 요소별 구간
+  const depthRows = ((sc.factor_buckets || {}).depth || []).map((b) => `<tr>
+      <td>${esc(b.label)}</td><td><b>${b.points}</b></td><td>${b.n.toLocaleString()}</td>
+      <td class="${cls(b.alpha_pct)}">${pct(b.alpha_pct)}</td>
+      <td class="${cls(b.alpha_first_half)}">${pct(b.alpha_first_half)}</td>
+      <td class="${cls(b.alpha_second_half)}">${pct(b.alpha_second_half)}</td>
+      <td class="mute">${b.low_sample ? '저수표' : ''}</td>
+    </tr>`);
+  const rsiRows = ((sc.factor_buckets || {}).rsi || []).map((b) => `<tr>
+      <td>RSI ${esc(b.label)}</td><td><b>${b.points}</b></td><td>${b.n.toLocaleString()}</td>
+      <td class="${cls(b.alpha_pct)}">${pct(b.alpha_pct)}</td>
+      <td class="${cls(b.alpha_first_half)}">${pct(b.alpha_first_half)}</td>
+      <td class="${cls(b.alpha_second_half)}">${pct(b.alpha_second_half)}</td>
+      <td></td>
+    </tr>`);
+  if (fac) {
+    fac.innerHTML = `
+      <div class="table-wrap"><table>
+        <thead><tr><th>구간</th><th>점수</th><th>n</th><th>알파</th>
+          <th>전반</th><th>후반</th><th></th></tr></thead>
+        <tbody>${depthRows.join('')}${rsiRows.join('')}</tbody>
+      </table></div>`;
+  }
+
+  if (note) {
+    note.innerHTML = `
+      점수 기준 후보 8개를 비교해 <b>낙폭+RSI</b>를 골랐습니다 (전/후반 IC 0.158 → 0.164).
+      저점 근접도·이력은 전/후반 구간 순서가 뒤집혀 <b>탈락</b>했습니다.
+      200일선·3개월·1년은 단독으로는 안정적이었지만 조합에서 상위 그룹 성과가 약했습니다.<br>
+      ※ 63일 창이 겹쳐 통계적 유의성은 과장됩니다 · 생존 편향 있음 · 거래비용·세금 미반영.
+      점수는 <b>상대 순위</b>이며 수익 예측이 아닙니다.`;
+  }
+}
+
+const maxDepthPoints = (def) =>
+  Math.max(0, ...(def.depth || []).map((d) => Number(d.points) || 0));
+const maxRsiPoints = (def) =>
+  Math.max(0, ...(def.rsi || []).map((d) => Number(d.points) || 0));
+
 function renderVerify() {
+  renderScoreVerify();
   const bt = state.backtest;
   const sum = $('bt-summary');
   if (!bt) {
@@ -1816,6 +1944,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   $('f-depth').addEventListener('change', (e) => {
     state.filters.depth = e.target.value;
+    renderBuy(state.data.etfs);
+  });
+  $('f-buy-sort').addEventListener('change', (e) => {
+    state.buySort = e.target.value;
     renderBuy(state.data.etfs);
   });
   $('f-depth-all').addEventListener('change', (e) => {

@@ -416,3 +416,103 @@ body.dark .search-input{background:var(--dk2)}
 /* 카드에 표시하는 실명칭 (발행사 포함) — 라벨 아래 작은 글씨 */
 .sig-sub{display:block;font-size:.68rem;color:var(--ink3);line-height:1.45;
   margin-top:2px;word-break:break-word}
+
+/* ---------- 매수 탭: 점수표 ----------
+   table-layout:fixed + % 폭이라 어느 화면 폭에서도 가로 스크롤이 생기지 않는다.
+   그래서 표가 스크롤 컨테이너가 아니고, 헤더를 페이지 기준으로 고정할 수 있다
+   (전체 목록 표는 11열이라 가로 스크롤이 필요해 헤더 고정이 불가능하다).
+   ★ .card{overflow:hidden} 을 풀어야 sticky 기준점이 페이지가 된다. */
+.buy-card{overflow:visible}
+/* 카드 padding 이 이미 있으므로 이중 여백 제거.
+   ★ overflow:visible 필수 — .table-wrap 은 overflow-x:auto 라서
+     그대로 두면 헤더 sticky 의 기준점이 이 박스가 되어 화면에 붙지 않는다.
+     표가 폭에 맞으므로(table-layout:fixed) 가로 스크롤이 필요 없다. */
+.buy-table{padding:0;overflow:visible}
+.buy-table table{table-layout:fixed;width:100%;min-width:0}
+.buy-table th{
+  position:sticky;top:55px;z-index:3;
+  background:var(--card);box-shadow:inset 0 -1px 0 var(--line);
+}
+/* 열 폭 (데스크톱 11열) */
+.buy-table th.col-name{width:23%}
+.buy-table th.col-score{width:15%}
+.buy-table th.col-price{width:8%}
+.buy-table th.col-low{width:8%}
+.buy-table th.col-rsi{width:7%}
+.buy-table th.col-high{width:8%}
+.buy-table th.col-ma200{width:8%}
+.buy-table th.col-ret12{width:7%}
+.buy-table th.col-weeks{width:5%}
+.buy-table th.col-group{width:6%}
+.buy-table th.col-hold{width:5%}
+
+/* 셀 내용이 넘치면 잘라서 표 폭을 밀지 않게 한다
+   (table-layout:fixed 여도 내용이 넘치면 표가 옆으로 밀린다) */
+.buy-table td{overflow:hidden}
+/* 종목 칸 — 코드 + 이름 (+ 뱃지) */
+.buy-table td.nm{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 5px;text-align:left}
+.buy-table td.nm .c{font-weight:700;flex:0 0 auto}
+.buy-table td.nm .mute{font-size:.74rem;color:var(--ink3);flex:1 1 auto;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 점수 칸 — 숫자 + 바 + 그 점수 그룹의 실측 */
+.buy-table td.sc{text-align:right;vertical-align:top}
+.scv{font-weight:800;font-size:1.02rem;font-variant-numeric:tabular-nums}
+.scv.s-gold{color:var(--warn-ink2)}
+.scv.s-good{color:var(--pos)}
+.scv.s-mid{color:var(--ink2)}
+.scv.s-low{color:var(--ink3)}
+.scbar{display:block;height:5px;background:var(--none-bg);border-radius:3px;margin:3px 0 3px auto;overflow:hidden}
+.scbar i{display:block;height:100%;border-radius:3px;background:var(--ink3)}
+.buy-table td.sc.s-gold .scbar i{background:var(--warn-line)}
+.buy-table td.sc.s-good .scbar i{background:var(--pos)}
+.buy-table td.sc.s-mid .scbar i{background:var(--ink2)}
+.sc-sub{display:block;font-size:.58rem;color:var(--ink3);line-height:1.35;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-short{display:none}
+
+/* 보유 버튼 — 표 안에서는 좁은 정사각형으로 */
+.buy-table td:last-child{padding:5px 1px;text-align:center}
+.buy-table .pf-add{min-width:0;width:26px;height:26px;padding:0;border-radius:9px;
+  font-size:.8rem;line-height:1;display:inline-flex;align-items:center;justify-content:center}
+
+/* 그룹 구분 행 · 빈 상태 */
+.buy-table tr.grp td{
+  background:var(--none-bg);font-size:.68rem;font-weight:700;color:var(--ink2);
+  text-align:left;padding:5px 7px;white-space:nowrap;
+}
+.buy-table td.empty-cell{text-align:left;white-space:normal;color:var(--ink2);
+  font-size:.8rem;line-height:1.65;padding:10px 4px}
+
+/* 태블릿: 7열 (200일선·1년·이력·구분 숨김) */
+@media (max-width:1023px){
+  .buy-table .hide-md{display:none}
+  .buy-table th.col-name{width:30%}
+  .buy-table th.col-score{width:22%}
+  .buy-table th.col-price{width:11%}
+  .buy-table th.col-low{width:11%}
+  .buy-table th.col-rsi{width:10%}
+  .buy-table th.col-high{width:11%}
+  .buy-table th.col-hold{width:5%}
+  .buy-table .sc-sub:not(.sc-short){display:none}
+  .buy-table .sc-short{display:block}
+}
+/* 폰: 5열 (현재가·고점대비도 숨김) */
+@media (max-width:640px){
+  .buy-table .hide-sm{display:none}
+  .buy-table th.col-name{width:33%}
+  .buy-table th.col-score{width:24%}
+  .buy-table th.col-low{width:17%}
+  .buy-table th.col-rsi{width:15%}
+  .buy-table th.col-hold{width:11%}
+  .buy-table th,.buy-table td{padding:6px 4px}
+  /* 폰에서는 이름을 코드 아래 2줄로 — 잘라서 못 읽는 것보다 낫다 */
+  .buy-table td.nm{display:block}
+  .buy-table td.nm .c{display:block;font-size:.72rem;line-height:1.25}
+  .buy-table td.nm .mute{
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+    font-size:.7rem;line-height:1.3;white-space:normal;overflow:hidden;
+    word-break:keep-all;flex:none;
+  }
+  .buy-table td.nm .tag{font-size:.56rem}
+}

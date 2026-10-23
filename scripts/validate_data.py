@@ -25,6 +25,11 @@ from universe import (  # noqa: E402
     MARKETS,
     MIN_BARS_NEW,
     MIN_BARS_STD,
+    SCORE_DEPTH_POINTS,
+    SCORE_MAX,
+    SCORE_RSI_POINTS,
+    buy_score,
+    score_parts,
     REGIME_METHOD,
     REGIME_THRESHOLD,
     RSI_PERIOD,
@@ -144,6 +149,13 @@ def validate_market(market: str) -> None:
         err(f"{where}: rules.min_bars_std={rules.get('min_bars_std')} ≠ {MIN_BARS_STD}")
     if rules.get("min_bars_new") != MIN_BARS_NEW:
         err(f"{where}: rules.min_bars_new={rules.get('min_bars_new')} ≠ {MIN_BARS_NEW}")
+    # 매수 점수 규칙 — 화면이 쓰는 값과 데이터의 rules 가 같아야 한다
+    if rules.get("score_max") != SCORE_MAX:
+        err(f"{where}: rules.score_max={rules.get('score_max')} ≠ {SCORE_MAX}")
+    if rules.get("score_depth_points") != SCORE_DEPTH_POINTS:
+        err(f"{where}: rules.score_depth_points 가 universe.py 와 다름")
+    if rules.get("score_rsi_points") != [[hi, p] for hi, p in SCORE_RSI_POINTS]:
+        err(f"{where}: rules.score_rsi_points 가 universe.py 와 다름")
 
     # --- 종목 ---
     etfs = data.get("etfs") or []
@@ -196,6 +208,29 @@ def validate_market(market: str) -> None:
         expect_reg = expect_raw and data.get("regime") == "bear"
         if sig.get("regime_pass") != expect_reg:
             err(f"{w}: signal.regime_pass={sig.get('regime_pass')} 인데 계산값은 {expect_reg}")
+
+        # --- 매수 점수 정합성 ---
+        # 점수는 신호일 때만 의미가 있다. 원시값에서 다시 계산해 비교한다.
+        depth_label, rsi_v = sig.get("depth_label"), e.get("rsi")
+        expect_score = buy_score(depth_label, rsi_v) if expect_raw else None
+        if sig.get("score") != expect_score:
+            err(f"{w}: signal.score={sig.get('score')} 인데 계산값은 {expect_score} "
+                f"(낙폭 {depth_label}, RSI {rsi_v})")
+        parts = sig.get("score_parts")
+        if expect_raw:
+            expect_parts = score_parts(depth_label, rsi_v)
+            if parts != expect_parts:
+                err(f"{w}: signal.score_parts={parts} 인데 계산값은 {expect_parts}")
+            elif sum(parts.values()) != sig.get("score"):
+                err(f"{w}: score_parts 합({sum(parts.values())}) ≠ score({sig.get('score')})")
+            else:
+                for k, v in parts.items():
+                    if not isinstance(v, int) or v < 0:
+                        err(f"{w}: score_parts.{k}={v} 가 0 이상 정수가 아님")
+                if not 0 <= (sig.get("score") or 0) <= SCORE_MAX:
+                    err(f"{w}: score={sig.get('score')} 가 0~{SCORE_MAX} 범위 밖")
+        elif parts is not None:
+            err(f"{w}: 비신호인데 score_parts 가 있음 ({parts})")
 
         # --- RSI (주봉) 정합성 ---
         check_number(e.get("rsi"), "rsi", w, lo=0, hi=100)
