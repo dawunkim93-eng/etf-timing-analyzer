@@ -389,6 +389,19 @@ body.dark .search-input{background:var(--dk2)}
 #all-table tbody td:first-child .c{ flex:0 0 auto }   /* 티커는 절대 줄이지 않는다 */
 #all-table tbody td:first-child .mute{ flex:1 1 auto; min-width:0; width:auto }
 
+/* ★ 전체 목록은 가로 고정 열을 쓰지 않는다 ★
+   고정 열(150px)이 있으면 그 구간을 지나는 헤더 제목이 가려진다.
+   그리고 헤더 첫 셀만 풀면 더 나빠진다 — 실측(scrollLeft=150, 한국):
+     x=60  헤더 '카테고리' / 본문 '종목명'  ← 거짓 라벨
+     x=120 헤더 '현재가'   / 본문 '종목명'  ← 거짓 라벨
+   → 11열 전부 같은 속도로 스크롤시켜 제목과 값을 항상 정렬시킨다.
+   (다른 탭 표는 고정 유지 — 대부분 가로 스크롤이 없어 고정 자체가 무의미) */
+#all-table th:first-child,
+#all-table td:first-child{
+  position:static;   /* 가로 고정 해제 */
+  box-shadow:none;   /* 고정 열 경계 그림자 제거 */
+}
+
 /* ★ 헤더(첫 행)를 화면에 고정할 수 없는 이유 ★
    전체 목록은 11열이라 가로 스크롤이 필수다.
    가로 스크롤하려면 표를 감싼 박스가 스크롤 컨테이너여야 하고
