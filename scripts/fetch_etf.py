@@ -545,8 +545,10 @@ def build_indicators(bars: list[dict], market_meta: dict, raw: dict | None = Non
 
     야후 일봉 배열의 마지막 봉은 실제 마지막 거래일보다 하루 밀려 있다.
     그래서 '현재가' 는 meta 의 regularMarketPrice 를 쓴다.
-    단, 지표(저·고점, MA, RSI)는 일봉 배열 그대로 계산한다 — 배열이
-    어제까지여도 지표는 거기까지의 값으로 일관된다.
+    지표(MA, RSI)는 일봉 배열 그대로 계산한다 — 배열이 어제까지여도
+    지표는 거기까지의 값으로 일관된다.
+    단 저·고점만은 현재가까지 포함한다(아래 참고). 현재가가 일봉 저점을
+    뚫은 상태를 그대로 두면 '저점 대비 -5%' 같은 값이 나온다.
     """
     closes = [b["close"] for b in bars]
     lows = [b["low"] for b in bars]
@@ -563,6 +565,16 @@ def build_indicators(bars: list[dict], market_meta: dict, raw: dict | None = Non
     win = bars[-BARS_FOR_52W:]
     low_52w = min(b["low"] for b in win)
     high_52w = max(b["high"] for b in win)
+    # 현재가까지 저·고점 범위에 포함한다.
+    # 일봉 배열은 현재가보다 하루 늦다(위 설명). 그래서 급락일에는 실시간
+    # 가격이 일봉 기준 52주 저점을 쉽게 뚫는다 — '저점 대비 -5%' 같은 값이
+    # 생기고(검증 오류로 실행이 죽는다), 신호도 하루 늦게 뜬다.
+    # 고점도 같은 이유로 급등일(갭상승)에 현재가가 위로 벗어난다.
+    # 저점은 정의상 '지금까지의 최저가'이므로 현재가가 그보다 낮으면
+    # 저점이 갱신된 것이다. 52주 계산의 원래 정의와도 맞다.
+    if isinstance(display_px, (int, float)) and display_px:
+        low_52w = min(low_52w, display_px)
+        high_52w = max(high_52w, display_px)
     # 저점 기준이 몇 주인지 — 봉 수 / 5 로 나누면 정확하지 않다
     # (252봉 = 50.4주. 실제로는 1년 ≈ 52주 = 260거래일).
     # 날짜로 실제 경과 주를 계산한다.
@@ -606,8 +618,12 @@ def build_indicators(bars: list[dict], market_meta: dict, raw: dict | None = Non
     if base:
         ytd = pct_change(base, px)
 
-    from_low = pct_change(low_52w, px)
-    from_high = pct_change(high_52w, px)
+    # 저점·고점 대비 위치는 '화면에 보이는 현재가' 기준으로 계산한다.
+    # px(closes[-1])는 일봉 배열의 마지막 종가라 현재가보다 하루 늦다.
+    # 그대로 쓰면 장중에 '지금 가격은 28,095인데 저점 대비 +2%' 처럼
+    # 서로 다른 날 값을 한 줄에 보여주게 되고, 신호도 하루 늦는다.
+    from_low = pct_change(low_52w, display_px)
+    from_high = pct_change(high_52w, display_px)
 
     # 시장 국면: 벤치마크 1년 수익률이 음수면 약세
     regime = None
