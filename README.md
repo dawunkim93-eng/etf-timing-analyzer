@@ -432,10 +432,10 @@ S&P500 · 커버드콜.
 
 | 출처 | 용도 | 갱신 |
 |---|---|---|
-| Yahoo Finance `query2` chart API | 일봉 (미국·한국 ETF, VIX) | 장중 30분 / 장외 2시간 |
-| CNN Fear & Greed | 미국 공포·탐욕 지수 + 8개 구성요소 | 장중 30분 / 장외 2시간 |
-| Supabase 공개 버킷 | 한국 공포·탐욕 지수 + 5개 구성요소 (민간 계산) | 장중 30분 / 장외 2시간 |
-| stockhub.kr | 한국 공포·탐욕 30일 이력 | 장중 30분 / 장외 2시간 |
+| Yahoo Finance `query2` chart API | 일봉 (미국·한국 ETF, VIX) | 하루 1회 (07:10 KST) |
+| CNN Fear & Greed | 미국 공포·탐욕 지수 + 8개 구성요소 | 하루 1회 (07:10 KST) |
+| Supabase 공개 버킷 | 한국 공포·탐욕 지수 + 5개 구성요소 (민간 계산) | 하루 1회 (07:10 KST) |
+| stockhub.kr | 한국 공포·탐욕 30일 이력 | 하루 1회 (07:10 KST) |
 | GitHub kospi-feargreedindex | 한국 공포·탐욕 장기 이력 (2022~, 2개월 지연) | 검증용 |
 | Yahoo Finance screener | 미국 ETF AUM 참고 | 유니버스 정의 시 |
 | 네이버 `etfItemList.nhn` | 한국 ETF 목록 + AUM | 유니버스 정의 시 |
@@ -478,9 +478,14 @@ python -m http.server 8000           # http://localhost:8000
 
 ## 자동 갱신
 
-GitHub Actions 가 30분마다(장중) · 2시간마다(장외) 실행해서
+GitHub Actions 가 하루 1회(22:10 UTC = 07:10 KST) 실행해서
 `data/*.json` 을 갱신하고 커밋한다. 실질 변화가 없으면 커밋하지 않는다.
 변경이 push 되면 Pages 가 자동 재배포한다.
+
+갱신 시점은 미국 장 마감(21:00 UTC) 이후이자 한국 장 시작(09:00 KST) 전이다.
+매수·매도 조건이 일봉·주봉 종가 기준이라 장중 30분 간격 갱신은 판단을 바꾸지
+않았고, 실행·커밋 횟수만 늘려 하루 1회로 줄였다.
+
 
 ---
 
